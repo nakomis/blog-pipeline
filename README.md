@@ -1,5 +1,9 @@
 # Blog Pipeline — Cloud-native blog content review pipeline with a web UI
 
+<p align="center">
+  <img src="docs/blog-pipeline-icon.png" alt="Blog Pipeline" width="280" />
+</p>
+
 ## Support
 
 If you find this useful, please consider buying me a coffee:
@@ -9,6 +13,15 @@ If you find this useful, please consider buying me a coffee:
 ## Table of Contents
 
 <!-- toc -->
+
+- [Overview](#overview)
+- [Architecture Diagram](#architecture-diagram)
+- [Repository Layout](#repository-layout)
+- [Environments](#environments)
+- [Project status](#project-status)
+- [Architecture Diagrams](#architecture-diagrams)
+- [Support](#support)
+
 <!-- tocstop -->
 
 ## Overview
@@ -40,6 +53,25 @@ The web UI shows every post by pipeline stage.
 |---|---|---|
 | Sandbox | `pipeline.blog.sandbox.nakomis.com` | `975050268859` |
 | Production | `pipeline.blog.nakomis.com` | `637423226886` |
+
+## Project status
+
+Work is tracked in Taiga under the **PIPE** prefix —
+[taiga.nakom.is/project/blog-pipeline](http://taiga.nakom.is/project/blog-pipeline/).
+
+| Story | Feature |
+|---|---|
+| PIPE-1 | Post dashboard — pipeline stage overview |
+| PIPE-2 | Review trigger — webhook on blog-content push |
+| PIPE-3 | Cloud review loop — Step Functions scored fan-out |
+| PIPE-4 | The bag — staging queue and approval UI |
+| PIPE-5 | Publish — commit to blog-content with optional schedule |
+| PIPE-6 | FLUX image generation for posts |
+
+This repository currently holds the project scaffold: the CDK app
+(`infra/`) with the foundational DynamoDB table and the GitHub OIDC CI role,
+and the React + Vite dashboard shell (`web/`). The features above are
+implemented story by story.
 
 ## Architecture Diagrams
 

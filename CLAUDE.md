@@ -35,6 +35,11 @@ human approval before publication.
 - `infra/`: `npm test` — 70% coverage minimum
 - `web/`: `npm test` (Vitest) — 70% coverage minimum
 
+## Project management
+
+Tracked in Taiga (prefix **PIPE**): <http://taiga.nakom.is/project/blog-pipeline/>.
+Features are split across stories PIPE-1 … PIPE-6 — pick one up with `/start-taiga`.
+
 ## Architecture diagrams
 
 Source: `docs/architecture/blog-pipeline.drawio` — SVG auto-regenerated on commit by
