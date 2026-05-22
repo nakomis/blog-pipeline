@@ -183,7 +183,12 @@ export class ApiStack extends cdk.Stack {
         origin: new origins.RestApiOrigin(api, {
           customHeaders: { 'x-api-key': originApiKey },
         }),
-        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        // HTTPS_ONLY, not REDIRECT_TO_HTTPS. A redirect would let a plaintext
+        // HTTP request — carrying the Cognito bearer token — reach the edge
+        // before the 301 is returned, leaking the credential; most clients
+        // then follow the redirect silently, so the leak goes unnoticed. An
+        // API must reject HTTP outright, not usher it towards HTTPS.
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.HTTPS_ONLY,
         allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
         cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
         // Forward every viewer header (notably `Authorization`) except `Host`,

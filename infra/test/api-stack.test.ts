@@ -107,6 +107,18 @@ describe('ApiStack', () => {
     });
   });
 
+  test('rejects plaintext HTTP outright rather than redirecting it', () => {
+    // An API must not redirect HTTP→HTTPS: the bearer token would already
+    // have travelled in cleartext. CloudFront returns a 403 for HTTP instead.
+    template.hasResourceProperties('AWS::CloudFront::Distribution', {
+      DistributionConfig: Match.objectLike({
+        DefaultCacheBehavior: Match.objectLike({
+          ViewerProtocolPolicy: 'https-only',
+        }),
+      }),
+    });
+  });
+
   test('creates A and AAAA records for the API domain', () => {
     template.resourceCountIs('AWS::Route53::RecordSet', 2);
   });
