@@ -59,7 +59,7 @@ const CONFIG: Record<DeployEnv, EnvConfig> = {
  * blog-pipeline deployment to it — see `scripts/record-deployment.sh`.
  */
 export const DEPLOYMENT_TRACKER_ACCOUNT_ID = CONFIG.prod.accountId;
-export const DEPLOYMENT_TRACKER_DOMAIN = 'tracker.nakomis.com';
+export const DEPLOYMENT_TRACKER_DOMAIN = 'api.infra.nakomis.com';
 
 /**
  * Resolve the configuration for the current deploy environment.

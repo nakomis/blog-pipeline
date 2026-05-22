@@ -49,6 +49,6 @@ describe('resolveConfig', () => {
 describe('deployment tracker constants', () => {
   test('point at the prod account and the stable tracker domain', () => {
     expect(DEPLOYMENT_TRACKER_ACCOUNT_ID).toBe('637423226886');
-    expect(DEPLOYMENT_TRACKER_DOMAIN).toBe('tracker.nakomis.com');
+    expect(DEPLOYMENT_TRACKER_DOMAIN).toBe('api.infra.nakomis.com');
   });
 });
