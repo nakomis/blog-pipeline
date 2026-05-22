@@ -1,3 +1,14 @@
+# Planning
+PLAN.md
+
+# CDK
+cdk.out/
+*.out/
+
+# Coverage
+coverage/
+lcov.info
+
 # Logs
 logs
 *.log
