@@ -9,13 +9,15 @@ export interface WebCertStackProps extends cdk.StackProps {
 }
 
 /**
- * ACM certificate for the dashboard's custom domain.
+ * ACM certificate for the pipeline's CloudFront custom domains.
  *
  * CloudFront only accepts certificates from `us-east-1`, so this stack is
- * deployed there and the certificate is consumed cross-region by `WebStack`.
+ * deployed there and the certificate is consumed cross-region by both
+ * `WebStack` (the dashboard) and `ApiStack` (the API distribution). A single
+ * certificate covers both names — the web domain, plus the API domain as a SAN.
  *
  * The hosted zone is resolved by name with `HostedZone.fromLookup` — the zone
- * *ID* is never hard-coded; CDK caches the resolved value in `cdk.context.json`.
+ * *ID* is never hard-coded.
  */
 export class WebCertStack extends cdk.Stack {
   public readonly certificate: acm.ICertificate;
@@ -30,6 +32,7 @@ export class WebCertStack extends cdk.Stack {
 
     this.certificate = new acm.Certificate(this, 'Certificate', {
       domainName: config.domainName,
+      subjectAlternativeNames: [config.apiDomainName],
       validation: acm.CertificateValidation.fromDns(zone),
     });
   }

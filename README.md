@@ -71,9 +71,12 @@ Work is tracked in Taiga under the **PIPE** prefix —
 
 **PIPE-1 is implemented:** the dashboard read path is live — a React + Vite SPA
 served from CloudFront, gated behind the shared Cognito user pool, listing every
-post by pipeline stage from an HTTP API (`GET /posts`) backed by Lambda and
-DynamoDB. The remaining stories (the review loop, the staging queue, publishing)
-are built on top of it, story by story.
+post by pipeline stage from a REST API (`GET /posts`) backed by Lambda and
+DynamoDB. The API has its own custom domain
+(`api.pipeline.blog.[sandbox.]nakomis.com`) behind a CloudFront distribution that
+injects the required API key, so the usage plan and quota are enforced without
+exposing the key to the browser. The remaining stories (the review loop, the
+staging queue, publishing) are built on top of it, story by story.
 
 To populate the dashboard before the review loop exists, seed sample data:
 

@@ -3,7 +3,7 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
-import { EnvConfig } from './config';
+import { EnvConfig, DEPLOYMENT_TRACKER_ACCOUNT_ID } from './config';
 
 export interface GithubCiStackProps extends cdk.StackProps {
   config: EnvConfig;
@@ -56,6 +56,18 @@ export class GithubCiStack extends cdk.Stack {
       new iam.PolicyStatement({
         actions: ['sts:AssumeRole'],
         resources: [`arn:aws:iam::${config.accountId}:role/cdk-hnb659fds-*`],
+      }),
+    );
+
+    // Recording deployments to the shared deployment tracker (CLOUD-15) — a
+    // REST API in the prod account, called cross-account over SigV4. The
+    // tracker's resource policy must also allow this role; see CLOUD-15.
+    ciRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['execute-api:Invoke'],
+        resources: [
+          `arn:aws:execute-api:${config.region}:${DEPLOYMENT_TRACKER_ACCOUNT_ID}:*/*/*/deployments/*`,
+        ],
       }),
     );
 

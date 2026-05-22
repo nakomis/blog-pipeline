@@ -1,4 +1,8 @@
-import { resolveConfig } from '../lib/config';
+import {
+  resolveConfig,
+  DEPLOYMENT_TRACKER_ACCOUNT_ID,
+  DEPLOYMENT_TRACKER_DOMAIN,
+} from '../lib/config';
 
 describe('resolveConfig', () => {
   const original = process.env.NPM_ENVIRONMENT;
@@ -26,6 +30,7 @@ describe('resolveConfig', () => {
     const config = resolveConfig();
     expect(config.accountId).toBe('975050268859');
     expect(config.domainName).toBe('pipeline.blog.sandbox.nakomis.com');
+    expect(config.apiDomainName).toBe('api.pipeline.blog.sandbox.nakomis.com');
     expect(config.hostedZoneName).toBe('sandbox.nakomis.com');
     expect(config.ssmPrefix).toBe('/blog-pipeline/sandbox');
   });
@@ -35,7 +40,15 @@ describe('resolveConfig', () => {
     const config = resolveConfig();
     expect(config.accountId).toBe('637423226886');
     expect(config.domainName).toBe('pipeline.blog.nakomis.com');
+    expect(config.apiDomainName).toBe('api.pipeline.blog.nakomis.com');
     expect(config.hostedZoneName).toBe('nakomis.com');
     expect(config.region).toBe('eu-west-2');
+  });
+});
+
+describe('deployment tracker constants', () => {
+  test('point at the prod account and the stable tracker domain', () => {
+    expect(DEPLOYMENT_TRACKER_ACCOUNT_ID).toBe('637423226886');
+    expect(DEPLOYMENT_TRACKER_DOMAIN).toBe('tracker.nakomis.com');
   });
 });

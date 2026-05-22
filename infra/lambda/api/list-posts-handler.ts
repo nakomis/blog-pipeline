@@ -5,8 +5,8 @@ import {
   ScanCommand,
 } from '@aws-sdk/lib-dynamodb';
 import type {
-  APIGatewayProxyEventV2,
-  APIGatewayProxyResultV2,
+  APIGatewayProxyEvent,
+  APIGatewayProxyResult,
 } from 'aws-lambda';
 
 /**
@@ -25,13 +25,33 @@ function isPostStatus(value: string): value is PostStatus {
   return (VALID_STATUSES as readonly string[]).includes(value);
 }
 
+/**
+ * CORS headers for the response.
+ *
+ * The dashboard API sits on a different subdomain from the SPA, so browser
+ * requests are cross-origin. The REST API answers the OPTIONS preflight itself;
+ * the actual `GET` response needs the header too, so the request `Origin` is
+ * echoed back when it is one of the `ALLOWED_ORIGINS` the stack configured.
+ */
+function corsHeaders(event: APIGatewayProxyEvent): Record<string, string> {
+  const allowed = (process.env.ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .filter(Boolean);
+  const headers = event.headers ?? {};
+  const origin = headers.Origin ?? headers.origin ?? '';
+  return allowed.includes(origin)
+    ? { 'access-control-allow-origin': origin, vary: 'Origin' }
+    : {};
+}
+
 function jsonResponse(
   statusCode: number,
   body: unknown,
-): APIGatewayProxyResultV2 {
+  extraHeaders: Record<string, string>,
+): APIGatewayProxyResult {
   return {
     statusCode,
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...extraHeaders },
     body: JSON.stringify(body),
   };
 }
@@ -44,22 +64,32 @@ function jsonResponse(
  *   `by-status` GSI. An unrecognised status is a `400`.
  */
 export async function handler(
-  event: APIGatewayProxyEventV2,
-): Promise<APIGatewayProxyResultV2> {
+  event: APIGatewayProxyEvent,
+): Promise<APIGatewayProxyResult> {
+  const cors = corsHeaders(event);
+
   const tableName = process.env.POSTS_TABLE_NAME;
   if (!tableName) {
-    return jsonResponse(500, { message: 'POSTS_TABLE_NAME is not configured' });
+    return jsonResponse(
+      500,
+      { message: 'POSTS_TABLE_NAME is not configured' },
+      cors,
+    );
   }
 
   const status = event.queryStringParameters?.status;
 
   if (status !== undefined) {
     if (!isPostStatus(status)) {
-      return jsonResponse(400, {
-        message:
-          `Unknown status '${status}'. ` +
-          `Expected one of: ${VALID_STATUSES.join(', ')}`,
-      });
+      return jsonResponse(
+        400,
+        {
+          message:
+            `Unknown status '${status}'. ` +
+            `Expected one of: ${VALID_STATUSES.join(', ')}`,
+        },
+        cors,
+      );
     }
 
     const result = await docClient.send(
@@ -73,7 +103,7 @@ export async function handler(
         ScanIndexForward: false,
       }),
     );
-    return jsonResponse(200, { posts: result.Items ?? [] });
+    return jsonResponse(200, { posts: result.Items ?? [] }, cors);
   }
 
   const result = await docClient.send(
@@ -82,5 +112,5 @@ export async function handler(
   const posts = (result.Items ?? []).sort((a, b) =>
     String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')),
   );
-  return jsonResponse(200, { posts });
+  return jsonResponse(200, { posts }, cors);
 }

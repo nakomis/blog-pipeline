@@ -10,6 +10,7 @@ const sandboxConfig: EnvConfig = {
   accountId: '975050268859',
   region: 'eu-west-2',
   domainName: 'pipeline.blog.sandbox.nakomis.com',
+  apiDomainName: 'api.pipeline.blog.sandbox.nakomis.com',
   hostedZoneName: 'sandbox.nakomis.com',
   ssmPrefix: '/blog-pipeline/sandbox',
 };
@@ -73,6 +74,16 @@ describe('GithubCiStack', () => {
       PolicyDocument: Match.objectLike({
         Statement: Match.arrayWith([
           Match.objectLike({ Action: 'sts:AssumeRole' }),
+        ]),
+      }),
+    });
+  });
+
+  test('CI role can record deployments to the tracker API', () => {
+    synth(sandboxConfig).hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({ Action: 'execute-api:Invoke' }),
         ]),
       }),
     });

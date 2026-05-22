@@ -44,16 +44,27 @@ ssm() {
     --query 'Parameter.Value' --output text
 }
 
+# The API has a stable custom domain, so its URL is derived from the
+# environment rather than looked up from SSM.
 SSM_PREFIX="/blog-pipeline/$AWS_ENV"
-API_URL=$(ssm "$SSM_PREFIX/api/url")
 USER_POOL_ID=$(ssm "$SSM_PREFIX/cognito/user-pool-id")
 CLIENT_ID=$(ssm "$SSM_PREFIX/cognito/client-id")
 LOGIN_DOMAIN=$(ssm "$SSM_PREFIX/cognito/login-domain")
 
 case "$ENV" in
-  prod)      APP_ORIGIN="https://pipeline.blog.nakomis.com" ;;
-  sandbox)   APP_ORIGIN="https://pipeline.blog.sandbox.nakomis.com" ;;
-  localhost) APP_ORIGIN="http://localhost:5173" ;;
+  prod)
+    APP_ORIGIN="https://pipeline.blog.nakomis.com"
+    API_URL="https://api.pipeline.blog.nakomis.com"
+    ;;
+  sandbox)
+    APP_ORIGIN="https://pipeline.blog.sandbox.nakomis.com"
+    API_URL="https://api.pipeline.blog.sandbox.nakomis.com"
+    ;;
+  localhost)
+    APP_ORIGIN="http://localhost:5173"
+    # Local dev talks to the sandbox API — its CORS allows the localhost origin.
+    API_URL="https://api.pipeline.blog.sandbox.nakomis.com"
+    ;;
 esac
 
 setValue env "$ENV"

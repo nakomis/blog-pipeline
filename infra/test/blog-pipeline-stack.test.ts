@@ -8,6 +8,7 @@ const sandboxConfig: EnvConfig = {
   accountId: '975050268859',
   region: 'eu-west-2',
   domainName: 'pipeline.blog.sandbox.nakomis.com',
+  apiDomainName: 'api.pipeline.blog.sandbox.nakomis.com',
   hostedZoneName: 'sandbox.nakomis.com',
   ssmPrefix: '/blog-pipeline/sandbox',
 };
@@ -17,6 +18,7 @@ const prodConfig: EnvConfig = {
   accountId: '637423226886',
   region: 'eu-west-2',
   domainName: 'pipeline.blog.nakomis.com',
+  apiDomainName: 'api.pipeline.blog.nakomis.com',
   hostedZoneName: 'nakomis.com',
   ssmPrefix: '/blog-pipeline/prod',
 };

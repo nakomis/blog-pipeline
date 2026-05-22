@@ -4,16 +4,17 @@ import {
   QueryCommand,
   ScanCommand,
 } from '@aws-sdk/lib-dynamodb';
-import type { APIGatewayProxyEventV2 } from 'aws-lambda';
+import type { APIGatewayProxyEvent } from 'aws-lambda';
 import { handler } from '../../lambda/api/list-posts-handler';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
 
-/** Minimal APIGW v2 event — only the fields the handler reads. */
-function event(status?: string): APIGatewayProxyEventV2 {
+/** Minimal REST API proxy event — only the fields the handler reads. */
+function event(status?: string, origin?: string): APIGatewayProxyEvent {
   return {
-    queryStringParameters: status === undefined ? undefined : { status },
-  } as unknown as APIGatewayProxyEventV2;
+    queryStringParameters: status === undefined ? null : { status },
+    headers: origin === undefined ? {} : { Origin: origin },
+  } as unknown as APIGatewayProxyEvent;
 }
 
 const samplePosts = [
@@ -25,6 +26,7 @@ describe('list-posts handler', () => {
   beforeEach(() => {
     ddbMock.reset();
     process.env.POSTS_TABLE_NAME = 'blog-pipeline-posts-test';
+    delete process.env.ALLOWED_ORIGINS;
   });
 
   test('returns 500 when the table name is not configured', async () => {
@@ -74,5 +76,23 @@ describe('list-posts handler', () => {
     const body = JSON.parse((result as { body: string }).body);
     expect(body.message).toMatch(/Unknown status/);
     expect(ddbMock.commandCalls(QueryCommand)).toHaveLength(0);
+  });
+
+  test('echoes an allowlisted Origin in the CORS header, rejects others', async () => {
+    process.env.ALLOWED_ORIGINS =
+      'https://pipeline.blog.sandbox.nakomis.com,http://localhost:5173';
+    ddbMock.on(ScanCommand).resolves({ Items: [] });
+
+    const allowed = (await handler(
+      event(undefined, 'http://localhost:5173'),
+    )) as { headers: Record<string, string> };
+    expect(allowed.headers['access-control-allow-origin']).toBe(
+      'http://localhost:5173',
+    );
+
+    const blocked = (await handler(
+      event(undefined, 'https://evil.example.com'),
+    )) as { headers: Record<string, string> };
+    expect(blocked.headers['access-control-allow-origin']).toBeUndefined();
   });
 });

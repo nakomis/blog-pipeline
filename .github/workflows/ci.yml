@@ -54,6 +54,9 @@ jobs:
     name: CDK synth
     runs-on: ubuntu-latest
     needs: test-infra
+    permissions:
+      id-token: write
+      contents: read
     defaults:
       run:
         working-directory: infra
@@ -67,14 +70,52 @@ jobs:
           cache: npm
           cache-dependency-path: infra/package-lock.json
       - run: npm ci
-      # HostedZone.fromLookup results are cached in the committed
-      # cdk.context.json, so synth needs no AWS credentials.
+      # cdk.context.json is not committed, so synth resolves HostedZone.fromLookup
+      # live — which needs AWS credentials.
+      - name: Configure AWS credentials (sandbox)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::975050268859:role/nakomis-blog-pipeline-github-ci-sandbox
+          aws-region: eu-west-2
       - run: npm run ci-synth-sandbox
+
+  version:
+    name: Compute version
+    runs-on: ubuntu-latest
+    needs: test-infra
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      version: ${{ steps.compute.outputs.version }}
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CHECKOUT_REF }}
+      - name: Configure AWS credentials (sandbox)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::975050268859:role/nakomis-blog-pipeline-github-ci-sandbox
+          aws-region: eu-west-2
+      # Compute the version once; both environments deploy this same value so a
+      # release never changes version between sandbox and prod.
+      - name: Compute version
+        id: compute
+        run: echo "version=$(scripts/compute-version.sh)" >> "$GITHUB_OUTPUT"
+      - name: Upload version.json
+        uses: actions/upload-artifact@v4
+        with:
+          name: version
+          path: infra/version.json
 
   deploy-sandbox:
     name: Deploy — sandbox
     runs-on: ubuntu-latest
-    needs: [synth, test-web]
+    needs: [synth, test-web, version]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     environment: sandbox
     permissions:
@@ -93,6 +134,12 @@ jobs:
           cache: npm
           cache-dependency-path: infra/package-lock.json
       - run: npm ci
+      # Deploy the version computed once up front, so sandbox and prod match.
+      - name: Download computed version
+        uses: actions/download-artifact@v4
+        with:
+          name: version
+          path: infra
       - name: Configure AWS credentials (sandbox)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -100,6 +147,8 @@ jobs:
           aws-region: eu-west-2
       - name: Deploy to sandbox
         run: npm run ci-deploy-sandbox
+      - name: Record deployment
+        run: scripts/record-deployment.sh sandbox
 
   deploy-production:
     name: Deploy — production
@@ -123,6 +172,12 @@ jobs:
           cache: npm
           cache-dependency-path: infra/package-lock.json
       - run: npm ci
+      # The same version artifact the sandbox deploy used — never recomputed.
+      - name: Download computed version
+        uses: actions/download-artifact@v4
+        with:
+          name: version
+          path: infra
       - name: Configure AWS credentials (production)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -130,3 +185,5 @@ jobs:
           aws-region: eu-west-2
       - name: Deploy to production
         run: npm run ci-deploy-prod
+      - name: Record deployment
+        run: scripts/record-deployment.sh prod

@@ -8,6 +8,7 @@ const sandboxConfig: EnvConfig = {
   accountId: '975050268859',
   region: 'eu-west-2',
   domainName: 'pipeline.blog.sandbox.nakomis.com',
+  apiDomainName: 'api.pipeline.blog.sandbox.nakomis.com',
   hostedZoneName: 'sandbox.nakomis.com',
   ssmPrefix: '/blog-pipeline/sandbox',
 };
@@ -23,7 +24,10 @@ describe('WebCertStack', () => {
     expect(stack.region).toBe('us-east-1');
     Template.fromStack(stack).hasResourceProperties(
       'AWS::CertificateManager::Certificate',
-      { DomainName: 'pipeline.blog.sandbox.nakomis.com' },
+      {
+        DomainName: 'pipeline.blog.sandbox.nakomis.com',
+        SubjectAlternativeNames: ['api.pipeline.blog.sandbox.nakomis.com'],
+      },
     );
   });
 });

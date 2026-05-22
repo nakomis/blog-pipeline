@@ -19,7 +19,10 @@
         <mxCell id="cognito" value="Cognito&#10;shared NakomisUserPool" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
           <mxGeometry x="330" y="310" width="180" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="httpapi" value="HTTP API&#10;(API Gateway)&#10;JWT authorizer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+        <mxCell id="apicf" value="API CloudFront&#10;(injects x-api-key)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="80" y="480" width="150" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="httpapi" value="REST API&#10;(API Gateway)&#10;Cognito authorizer + API key" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
           <mxGeometry x="340" y="470" width="150" height="80" as="geometry" />
         </mxCell>
         <mxCell id="lambda" value="Lambda&#10;list-posts" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
@@ -37,7 +40,10 @@
         <mxCell id="e3" value="OIDC sign-in (hosted UI)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" edge="1" parent="1" source="browser" target="cognito">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e4" value="GET /posts + Bearer token" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" edge="1" parent="1" source="browser" target="httpapi">
+        <mxCell id="e4" value="GET /posts + Bearer token" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" edge="1" parent="1" source="browser" target="apicf">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4b" value="forwards + x-api-key header" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" edge="1" parent="1" source="apicf" target="httpapi">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e5" value="validates JWT" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;fontSize=11;" edge="1" parent="1" source="httpapi" target="cognito">
