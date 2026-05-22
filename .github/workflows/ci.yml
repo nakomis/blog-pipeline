@@ -147,6 +147,18 @@ jobs:
           aws-region: eu-west-2
       - name: Deploy to sandbox
         run: npm run ci-deploy-sandbox
+      # cdk deploy creates the bucket and distribution but does not fill them —
+      # build the SPA, sync it to S3 and invalidate the CloudFront cache.
+      - name: Publish the dashboard SPA
+        working-directory: web
+        run: |
+          npm ci
+          scripts/set-config.sh sandbox
+          npm run build
+          BUCKET=$(aws ssm get-parameter --name /blog-pipeline/sandbox/web/bucket-name --query Parameter.Value --output text)
+          DIST=$(aws ssm get-parameter --name /blog-pipeline/sandbox/web/distribution-id --query Parameter.Value --output text)
+          aws s3 sync dist/ "s3://$BUCKET" --delete
+          aws cloudfront create-invalidation --distribution-id "$DIST" --paths '/*'
       - name: Record deployment
         run: scripts/record-deployment.sh sandbox
 
@@ -185,5 +197,17 @@ jobs:
           aws-region: eu-west-2
       - name: Deploy to production
         run: npm run ci-deploy-prod
+      # cdk deploy creates the bucket and distribution but does not fill them —
+      # build the SPA, sync it to S3 and invalidate the CloudFront cache.
+      - name: Publish the dashboard SPA
+        working-directory: web
+        run: |
+          npm ci
+          scripts/set-config.sh prod
+          npm run build
+          BUCKET=$(aws ssm get-parameter --name /blog-pipeline/prod/web/bucket-name --query Parameter.Value --output text)
+          DIST=$(aws ssm get-parameter --name /blog-pipeline/prod/web/distribution-id --query Parameter.Value --output text)
+          aws s3 sync dist/ "s3://$BUCKET" --delete
+          aws cloudfront create-invalidation --distribution-id "$DIST" --paths '/*'
       - name: Record deployment
         run: scripts/record-deployment.sh prod
