@@ -52,7 +52,9 @@ function Dashboard({ auth }: { auth: AuthContextProps }) {
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<StageFilter>('all');
 
-  const token = auth.user?.access_token;
+  // The API Gateway Cognito authorizer is scopeless, so it validates the ID
+  // token, not the access token.
+  const token = auth.user?.id_token;
 
   const load = useCallback(async () => {
     if (!token) {

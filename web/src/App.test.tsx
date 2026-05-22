@@ -40,7 +40,7 @@ function authState(overrides: Partial<AuthContextProps>): AuthContextProps {
 const signedIn = (overrides: Partial<AuthContextProps> = {}) =>
   authState({
     isAuthenticated: true,
-    user: { access_token: 'tok' },
+    user: { id_token: 'tok' },
     ...overrides,
   } as Partial<AuthContextProps>);
 
@@ -96,7 +96,7 @@ describe('App — authentication gate', () => {
 });
 
 describe('App — dashboard', () => {
-  test('fetches posts with the access token and renders every stage column', async () => {
+  test('fetches posts with the ID token and renders every stage column', async () => {
     mockedFetchPosts.mockResolvedValue(samplePosts);
     mockedUseAuth.mockReturnValue(signedIn());
     renderApp();

@@ -22,14 +22,15 @@ export interface Post {
 /**
  * Fetches every post from the dashboard API.
  *
- * @param accessToken Cognito access token — sent as a bearer token; the API's
- *                    JWT authorizer rejects the request without it.
+ * @param idToken Cognito ID token — sent as a bearer token. API Gateway's
+ *                scopeless Cognito authorizer validates the ID token; an
+ *                access token (`token_use: "access"`) is rejected with 401.
  */
-export async function fetchPosts(accessToken: string): Promise<Post[]> {
+export async function fetchPosts(idToken: string): Promise<Post[]> {
   const { apiUrl } = getConfig();
 
   const response = await fetch(`${apiUrl}/posts`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
+    headers: { Authorization: `Bearer ${idToken}` },
   });
 
   if (!response.ok) {
