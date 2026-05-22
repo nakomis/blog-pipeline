@@ -6,7 +6,7 @@ module.exports = {
     '^.+\\.tsx?$': 'ts-jest',
   },
   collectCoverage: true,
-  collectCoverageFrom: ['lib/**/*.ts'],
+  collectCoverageFrom: ['lib/**/*.ts', 'lambda/**/*.ts'],
   coverageThreshold: {
     global: {
       branches: 70,

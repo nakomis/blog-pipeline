@@ -4,6 +4,14 @@ PLAN.md
 # CDK
 cdk.out/
 *.out/
+# Context cache — resolved account-specific lookups (hosted-zone IDs etc.).
+# Deliberately not committed: a stale cached ID is worse than a fresh lookup,
+# and a committed file becomes a place to quietly hard-code IDs. Synth resolves
+# the lookups live and so needs AWS credentials (see .github/workflows/ci.yml).
+cdk.context.json
+
+# Generated per-environment web runtime config (see web/scripts/set-config.sh)
+web/public/config.json
 
 # Coverage
 coverage/

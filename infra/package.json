@@ -16,18 +16,25 @@
     "deploy-prod": "NPM_ENVIRONMENT=prod cdk deploy --profile nakom.is-admin --all --require-approval never",
     "ci-synth-sandbox": "NPM_ENVIRONMENT=sandbox cdk synth --all",
     "ci-deploy-sandbox": "NPM_ENVIRONMENT=sandbox cdk deploy --all --require-approval never --output cdk-deploy.out",
-    "ci-deploy-prod": "NPM_ENVIRONMENT=prod cdk deploy --all --require-approval never --output cdk-deploy.out"
+    "ci-deploy-prod": "NPM_ENVIRONMENT=prod cdk deploy --all --require-approval never --output cdk-deploy.out",
+    "seed-sandbox": "NPM_ENVIRONMENT=sandbox ts-node scripts/seed-posts.ts",
+    "seed-prod": "NPM_ENVIRONMENT=prod ts-node scripts/seed-posts.ts"
   },
   "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.10.5",
     "aws-cdk": "^2.1019.0",
+    "aws-sdk-client-mock": "^4.1.0",
+    "esbuild": "^0.24.2",
     "jest": "^29.7.0",
     "ts-jest": "^29.2.5",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.3"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.731.0",
+    "@aws-sdk/lib-dynamodb": "^3.731.0",
     "aws-cdk-lib": "^2.190.0",
     "constructs": "^10.4.2"
   }

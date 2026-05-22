@@ -1,0 +1,11 @@
+{
+  "env": "<ENV>",
+  "apiUrl": "<API_URL>",
+  "cognito": {
+    "authority": "<AUTHORITY>",
+    "clientId": "<CLIENT_ID>",
+    "domain": "<COGNITO_DOMAIN>",
+    "redirectUri": "<REDIRECT_URI>",
+    "logoutUri": "<LOGOUT_URI>"
+  }
+}
