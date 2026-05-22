@@ -14,7 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INFRA_DIR="$(dirname "$SCRIPT_DIR")"
 VERSION="$(jq -r '.version' "$INFRA_DIR/version.json")"
 REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-eu-west-2}}"
-TRACKER_URL="https://tracker.nakomis.com/deployments/blog-pipeline/${ENVIRONMENT}"
+TRACKER_URL="https://api.infra.nakomis.com/deployments/blog-pipeline/${ENVIRONMENT}"
 
 if [[ -z "${AWS_ACCESS_KEY_ID:-}" ]]; then
   echo "No AWS credentials — skipping deployment record" >&2

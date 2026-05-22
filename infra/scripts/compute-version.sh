@@ -22,7 +22,7 @@ INFRA_DIR="$(dirname "$SCRIPT_DIR")"
 VERSION_FILE="$INFRA_DIR/version.json"
 
 REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-eu-west-2}}"
-TRACKER_URL="https://tracker.nakomis.com/deployments/blog-pipeline/sandbox/latest"
+TRACKER_URL="https://api.infra.nakomis.com/deployments/blog-pipeline/sandbox/latest"
 
 LATEST=""
 if [[ -n "${AWS_ACCESS_KEY_ID:-}" ]]; then
