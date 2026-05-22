@@ -89,6 +89,17 @@ export class ApiStack extends cdk.Stack {
       },
     });
 
+    // The shared pool's hosted-login domain runs Managed Login (branding
+    // version 2), under which every app client must have a branding resource
+    // before its login pages will render — without one the hosted UI returns
+    // "Login pages unavailable". Use Cognito's default styling for now; PIPE-7
+    // replaces it with the nakomis branding.
+    new cognito.CfnManagedLoginBranding(this, 'DashboardLoginBranding', {
+      userPoolId,
+      clientId: userPoolClient.userPoolClientId,
+      useCognitoProvidedValues: true,
+    });
+
     // ── list-posts Lambda ────────────────────────────────────────────────
     const listPostsHandler = new nodejs.NodejsFunction(this, 'ListPostsHandler', {
       functionName: `blog-pipeline-list-posts-${deployEnv}`,

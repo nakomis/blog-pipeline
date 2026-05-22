@@ -130,6 +130,12 @@ describe('ApiStack', () => {
     });
   });
 
+  test('gives the app client managed-login branding so the hosted UI renders', () => {
+    template.hasResourceProperties('AWS::Cognito::ManagedLoginBranding', {
+      UseCognitoProvidedValues: true,
+    });
+  });
+
   test('publishes the Cognito SSM parameters but not the API URL', () => {
     const params = template.findResources('AWS::SSM::Parameter');
     const names = Object.values(params).map((p) => p.Properties.Name);
