@@ -67,11 +67,22 @@ Work is tracked in Taiga under the **PIPE** prefix —
 | PIPE-4 | The bag — staging queue and approval UI |
 | PIPE-5 | Publish — commit to blog-content with optional schedule |
 | PIPE-6 | FLUX image generation for posts |
+| PIPE-7 | Cognito managed-login branding for the dashboard |
 
-This repository currently holds the project scaffold: the CDK app
-(`infra/`) with the foundational DynamoDB table and the GitHub OIDC CI role,
-and the React + Vite dashboard shell (`web/`). The features above are
-implemented story by story.
+**PIPE-1 is implemented:** the dashboard read path is live — a React + Vite SPA
+served from CloudFront, gated behind the shared Cognito user pool, listing every
+post by pipeline stage from an HTTP API (`GET /posts`) backed by Lambda and
+DynamoDB. The remaining stories (the review loop, the staging queue, publishing)
+are built on top of it, story by story.
+
+To populate the dashboard before the review loop exists, seed sample data:
+
+```bash
+cd infra && AWS_PROFILE=nakom.is-sandbox npm run seed-sandbox
+```
+
+The SPA reads its runtime config from `/config.json`; generate it before a local
+run or a deploy with `web/scripts/set-config.sh [sandbox|prod|localhost]`.
 
 ## Architecture Diagrams
 

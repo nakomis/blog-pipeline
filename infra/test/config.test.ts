@@ -26,6 +26,7 @@ describe('resolveConfig', () => {
     const config = resolveConfig();
     expect(config.accountId).toBe('975050268859');
     expect(config.domainName).toBe('pipeline.blog.sandbox.nakomis.com');
+    expect(config.hostedZoneName).toBe('sandbox.nakomis.com');
     expect(config.ssmPrefix).toBe('/blog-pipeline/sandbox');
   });
 
@@ -34,6 +35,7 @@ describe('resolveConfig', () => {
     const config = resolveConfig();
     expect(config.accountId).toBe('637423226886');
     expect(config.domainName).toBe('pipeline.blog.nakomis.com');
+    expect(config.hostedZoneName).toBe('nakomis.com');
     expect(config.region).toBe('eu-west-2');
   });
 });

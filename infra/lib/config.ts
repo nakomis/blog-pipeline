@@ -17,6 +17,13 @@ export interface EnvConfig {
   region: string;
   /** Public domain the pipeline web UI is served from. */
   domainName: string;
+  /**
+   * Domain name of the Route53 hosted zone the web UI's record lives in.
+   *
+   * Only the (stable) zone name is configured here — the zone *ID* is resolved
+   * at synth time with `route53.HostedZone.fromLookup`, never hard-coded.
+   */
+  hostedZoneName: string;
   /** Prefix for SSM parameters owned by this environment. */
   ssmPrefix: string;
 }
@@ -29,6 +36,7 @@ const CONFIG: Record<DeployEnv, EnvConfig> = {
     accountId: '975050268859',
     region: REGION,
     domainName: 'pipeline.blog.sandbox.nakomis.com',
+    hostedZoneName: 'sandbox.nakomis.com',
     ssmPrefix: '/blog-pipeline/sandbox',
   },
   prod: {
@@ -36,6 +44,7 @@ const CONFIG: Record<DeployEnv, EnvConfig> = {
     accountId: '637423226886',
     region: REGION,
     domainName: 'pipeline.blog.nakomis.com',
+    hostedZoneName: 'nakomis.com',
     ssmPrefix: '/blog-pipeline/prod',
   },
 };

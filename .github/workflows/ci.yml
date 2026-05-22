@@ -67,7 +67,8 @@ jobs:
           cache: npm
           cache-dependency-path: infra/package-lock.json
       - run: npm ci
-      # The stacks perform no context lookups, so synth needs no AWS credentials.
+      # HostedZone.fromLookup results are cached in the committed
+      # cdk.context.json, so synth needs no AWS credentials.
       - run: npm run ci-synth-sandbox
 
   deploy-sandbox:

@@ -1,10 +1,16 @@
 import * as cdk from 'aws-cdk-lib';
+import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
 import { EnvConfig } from './config';
 
 export interface GithubCiStackProps extends cdk.StackProps {
   config: EnvConfig;
+  /** SPA bucket — grants the CI role permission to upload built assets. */
+  webBucket?: s3.IBucket;
+  /** CloudFront distribution — grants the CI role permission to invalidate it. */
+  webDistribution?: cloudfront.IDistribution;
 }
 
 /** The GitHub repository GitHub Actions runs from. */
@@ -22,7 +28,7 @@ export class GithubCiStack extends cdk.Stack {
 
   constructor(scope: Construct, id: string, props: GithubCiStackProps) {
     super(scope, id, props);
-    const { config } = props;
+    const { config, webBucket, webDistribution } = props;
 
     const provider = iam.OpenIdConnectProvider.fromOpenIdConnectProviderArn(
       this,
@@ -52,6 +58,33 @@ export class GithubCiStack extends cdk.Stack {
         resources: [`arn:aws:iam::${config.accountId}:role/cdk-hnb659fds-*`],
       }),
     );
+
+    // Deploying the SPA: sync built assets to the bucket, invalidate the
+    // CloudFront cache, and read the SSM parameters that drive the web build.
+    if (webBucket && webDistribution) {
+      ciRole.addToPolicy(
+        new iam.PolicyStatement({
+          actions: ['s3:PutObject', 's3:DeleteObject', 's3:ListBucket'],
+          resources: [webBucket.bucketArn, `${webBucket.bucketArn}/*`],
+        }),
+      );
+      ciRole.addToPolicy(
+        new iam.PolicyStatement({
+          actions: ['cloudfront:CreateInvalidation'],
+          resources: [
+            `arn:aws:cloudfront::${config.accountId}:distribution/${webDistribution.distributionId}`,
+          ],
+        }),
+      );
+      ciRole.addToPolicy(
+        new iam.PolicyStatement({
+          actions: ['ssm:GetParameter'],
+          resources: [
+            `arn:aws:ssm:${config.region}:${config.accountId}:parameter${config.ssmPrefix}/*`,
+          ],
+        }),
+      );
+    }
 
     this.ciRole = ciRole;
 

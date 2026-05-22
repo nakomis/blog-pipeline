@@ -5,6 +5,9 @@ PLAN.md
 cdk.out/
 *.out/
 
+# Generated per-environment web runtime config (see web/scripts/set-config.sh)
+web/public/config.json
+
 # Coverage
 coverage/
 lcov.info
