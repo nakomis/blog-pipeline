@@ -19,6 +19,7 @@ If you find this useful, please consider buying me a coffee:
 - [Repository Layout](#repository-layout)
 - [Environments](#environments)
 - [Project status](#project-status)
+- [First deployment](#first-deployment)
 - [Architecture Diagrams](#architecture-diagrams)
 - [Support](#support)
 
@@ -86,6 +87,42 @@ cd infra && AWS_PROFILE=nakom.is-sandbox npm run seed-sandbox
 
 The SPA reads its runtime config from `/config.json`; generate it before a local
 run or a deploy with `web/scripts/set-config.sh [sandbox|prod|localhost]`.
+
+## First deployment
+
+There is one unavoidable manual step before CI can take over.
+
+The GitHub Actions deploy role is itself created by CDK — it is the `GithubCiStack`.
+So the *first* deployment cannot run through CI: there is no role for the workflow
+to assume yet. Something holding AWS credentials has to create that role, and with
+no separate repo-bootstrapping tooling, that something is a human at a workstation.
+
+Both regions must be CDK-bootstrapped first (the CloudFront certificates live in
+`us-east-1`):
+
+```bash
+npx cdk bootstrap aws://975050268859/eu-west-2 aws://975050268859/us-east-1
+```
+
+Then deploy everything once, per account. `cdk deploy --all` orders the stacks by
+dependency — `WebCert` (us-east-1) → `BlogPipeline` → `Api` → `Web` → `GithubCi`:
+
+```bash
+cd infra
+
+# Sandbox
+AWS_PROFILE=nakom.is-sandbox NPM_ENVIRONMENT=sandbox npx cdk deploy --all
+
+# Production — when ready to go live
+AWS_PROFILE=nakom.is-admin NPM_ENVIRONMENT=prod npx cdk deploy --all
+```
+
+Once the CI role exists, every subsequent push deploys itself: the workflow assumes
+the role and runs `cdk deploy`. The manual step is never needed again unless the CI
+stack is torn down.
+
+`cdk.context.json` is intentionally gitignored. A local deploy generates it from
+account lookups and it stays on your machine; CI regenerates its own.
 
 ## Architecture Diagrams
 
