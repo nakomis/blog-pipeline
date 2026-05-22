@@ -127,6 +127,28 @@ describe('App — dashboard', () => {
     );
   });
 
+  test('slots a failed-review post into the Failed review column', async () => {
+    mockedFetchPosts.mockResolvedValue([
+      {
+        slug: 'fp',
+        status: 'failed',
+        title: 'Failed Post',
+        updatedAt: '2026-05-03T00:00:00Z',
+      },
+    ]);
+    mockedUseAuth.mockReturnValue(signedIn());
+    renderApp();
+    await screen.findByText('Failed Post');
+
+    fireEvent.change(screen.getByLabelText('Filter by stage'), {
+      target: { value: 'failed' },
+    });
+    expect(
+      screen.getByRole('heading', { level: 2, name: /Failed review/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Failed Post')).toBeInTheDocument();
+  });
+
   test('filtering by stage shows only the chosen column', async () => {
     mockedFetchPosts.mockResolvedValue(samplePosts);
     mockedUseAuth.mockReturnValue(signedIn());

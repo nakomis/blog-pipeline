@@ -8,6 +8,7 @@ import { ApiStack } from '../lib/api-stack';
 import { WebCertStack } from '../lib/web-cert-stack';
 import { WebStack } from '../lib/web-stack';
 import { GithubCiStack } from '../lib/github-ci-stack';
+import { BlogPipelineReviewStack } from '../lib/blog-pipeline-review-stack';
 
 const config = resolveConfig();
 const env = { account: config.accountId, region: config.region };
@@ -46,6 +47,14 @@ new ApiStack(app, `BlogPipeline-Api-${config.deployEnv}`, {
   postsTable: dataStack.postsTable,
   certificate: webCertStack.certificate,
   crossRegionReferences: true,
+});
+
+// The review loop (PIPE-3) — Step Functions, reviewer Lambdas and the drafts
+// bucket. Reads and writes the posts table owned by the data stack.
+new BlogPipelineReviewStack(app, `BlogPipeline-Review-${config.deployEnv}`, {
+  env,
+  config,
+  postsTable: dataStack.postsTable,
 });
 
 const webStack = new WebStack(app, `BlogPipeline-Web-${config.deployEnv}`, {

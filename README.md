@@ -19,6 +19,7 @@ If you find this useful, please consider buying me a coffee:
 - [Repository Layout](#repository-layout)
 - [Environments](#environments)
 - [Project status](#project-status)
+- [Review loop](#review-loop)
 - [First deployment](#first-deployment)
 - [Architecture Diagrams](#architecture-diagrams)
 - [Support](#support)
@@ -76,8 +77,14 @@ post by pipeline stage from a REST API (`GET /posts`) backed by Lambda and
 DynamoDB. The API has its own custom domain
 (`api.pipeline.blog.[sandbox.]nakomis.com`) behind a CloudFront distribution that
 injects the required API key, so the usage plan and quota are enforced without
-exposing the key to the browser. The remaining stories (the review loop, the
-staging queue, publishing) are built on top of it, story by story.
+exposing the key to the browser.
+
+**PIPE-3 is implemented:** the cloud review loop — a Step Functions state machine
+(`blog-pipeline-review`) that fans a draft out to four LLM reviewers in parallel,
+scores it through a deterministic gate, and has Claude Sonnet re-draft against the
+critique, up to four iterations. See [Review loop](#review-loop) below. The
+remaining stories (the review trigger webhook, the staging queue, publishing) are
+built on top of these, story by story.
 
 To populate the dashboard before the review loop exists, seed sample data:
 
@@ -87,6 +94,74 @@ cd infra && AWS_PROFILE=nakom.is-sandbox npm run seed-sandbox
 
 The SPA reads its runtime config from `/config.json`; generate it before a local
 run or a deploy with `web/scripts/set-config.sh [sandbox|prod|localhost]`.
+
+## Review loop
+
+The review loop (PIPE-3) is an AWS Step Functions state machine,
+`blog-pipeline-review-{env}`. Given a post `slug`, it:
+
+1. **LoadDraft** — checks the post item and its iteration-1 draft exist, marks
+   the post `reviewing`.
+2. **ReviewFanOut** — a `Map` state fans the draft out to four LLM reviewers in
+   parallel (Bedrock Nova, Azure OpenAI, Google Gemini, Anthropic Claude). Each
+   returns a structured verdict — a publishability score and any blockers — via
+   the Vercel AI SDK with a Zod schema. A reviewer that errors is recorded as
+   `unavailable` rather than failing the run.
+3. **Gate** — a deterministic, no-LLM decision: it needs a quorum of three of
+   the four reviewers to have returned a verdict, every verdict at or above the
+   publishability threshold, and no blockers.
+4. **Decide** — pass → `staged`; below threshold → **Redraft** (Claude Sonnet on
+   Bedrock rewrites against the critique) and loop, capped at four iterations.
+5. **SetOutcome** — terminal: the post lands `staged` on a pass, or `failed`
+   with a `reviewOutcome` of `capped`, `quorum`, or `exception`.
+
+Drafts and per-iteration reviewer results are stored in the
+`blog-pipeline-drafts-{env}` S3 bucket.
+
+### Manual prerequisites
+
+The three non-Bedrock reviewers need API keys. `BlogPipelineReviewStack` creates
+the secrets **empty** — populate each one after the first deploy, before running
+the loop. Bedrock needs no secret (it authorises through the Lambda's IAM role),
+but the Nova and Claude models must be enabled in the account's Bedrock model
+access page.
+
+| Secret | JSON shape |
+|---|---|
+| `blog-pipeline/{env}/reviewer/azure` | `{"apiKey","resourceName","deployment","apiVersion"}` |
+| `blog-pipeline/{env}/reviewer/gemini` | `{"apiKey"}` |
+| `blog-pipeline/{env}/reviewer/anthropic` | `{"apiKey"}` |
+
+```bash
+aws secretsmanager put-secret-value \
+  --profile nakom.is-sandbox \
+  --secret-id blog-pipeline/sandbox/reviewer/gemini \
+  --secret-string '{"apiKey":"…"}'
+```
+
+If a secret is left empty that reviewer simply reports `unavailable`; the loop
+still runs as long as the three-reviewer quorum is met.
+
+### Running it end to end
+
+There is no trigger yet — the webhook is PIPE-2. To exercise the loop, seed a
+deliberately-imperfect draft and start an execution by hand:
+
+```bash
+cd infra
+AWS_PROFILE=nakom.is-sandbox npm run seed-draft-sandbox
+
+aws stepfunctions start-execution \
+  --profile nakom.is-sandbox \
+  --state-machine-arn "$(aws ssm get-parameter \
+    --profile nakom.is-sandbox \
+    --name /blog-pipeline/sandbox/review/state-machine-arn \
+    --query Parameter.Value --output text)" \
+  --input '{"slug":"why-i-use-git-worktrees"}'
+```
+
+The seed script writes a `queued` post item and its iteration-1 draft to S3; pass
+an alternative slug as an argument to `seed-draft.ts` to seed more than one.
 
 ## First deployment
 

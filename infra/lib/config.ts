@@ -62,6 +62,54 @@ export const DEPLOYMENT_TRACKER_ACCOUNT_ID = CONFIG.prod.accountId;
 export const DEPLOYMENT_TRACKER_DOMAIN = 'api.infra.nakomis.com';
 
 /**
+ * Cloud review loop (PIPE-3) tuning.
+ *
+ * These are stable product constants, not environment-specific values — the
+ * model ids and loop thresholds are identical in sandbox and prod, so they live
+ * here rather than in SSM. The Azure deployment name is the one exception: it is
+ * account-specific and lives in the Azure reviewer secret.
+ */
+export const REVIEW = {
+  /** Reviewer providers, fanned out in parallel by the state machine. */
+  providers: ['bedrock', 'azure', 'gemini', 'anthropic'] as const,
+  /** Minimum publishability score (out of 10) for a clean pass. */
+  publishabilityThreshold: 8,
+  /** Hard cap on review iterations before the post is failed as `capped`. */
+  maxIterations: 4,
+  /**
+   * Fraction of configured providers that must return a usable verdict for the
+   * gate to trust the result: `ceil(quorum × providers.length)` reviewers are
+   * required — `ceil(2/3 × 4) = 3`. A fraction (not a hard count) so it
+   * rescales automatically if a provider is added or removed.
+   */
+  quorum: 2 / 3,
+  /**
+   * Model ids per provider. The Bedrock ids use the `eu.` cross-region
+   * inference profile (eu-west-2 is in the EU geo); the Anthropic id is a
+   * direct-API id. Azure's deployment name is not here — it comes from the
+   * Azure reviewer secret.
+   */
+  models: {
+    bedrock: 'eu.amazon.nova-pro-v1:0',
+    gemini: 'gemini-2.0-flash',
+    anthropic: 'claude-opus-4-7',
+  },
+  /** Claude Sonnet on Bedrock redrafts the post between iterations. */
+  redraftModel: 'eu.anthropic.claude-sonnet-4-6',
+} as const;
+
+/** A reviewer provider id — one of `REVIEW.providers`. */
+export type ReviewProvider = (typeof REVIEW.providers)[number];
+
+/**
+ * Number of reviewers that must return a usable verdict for the gate to reach a
+ * trustworthy decision — `ceil(REVIEW.quorum × providers)`.
+ */
+export function requiredReviewers(): number {
+  return Math.ceil(REVIEW.quorum * REVIEW.providers.length);
+}
+
+/**
  * Resolve the configuration for the current deploy environment.
  *
  * @throws if `NPM_ENVIRONMENT` is unset or not one of `sandbox` | `prod`.
