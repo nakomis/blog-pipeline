@@ -1,0 +1,40 @@
+.app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+.app__header h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.8rem;
+}
+
+.app__header p {
+  margin: 0 0 1.5rem;
+  color: var(--muted);
+}
+
+.stages {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.stage {
+  background: var(--panel);
+  border-radius: 10px;
+  padding: 1rem;
+  min-height: 160px;
+}
+
+.stage h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  border-bottom: 2px solid var(--accent);
+  padding-bottom: 0.5rem;
+}
+
+.stage__empty {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
