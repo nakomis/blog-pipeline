@@ -1,13 +1,13 @@
 import { createAzure } from '@ai-sdk/azure';
 import type { LanguageModel } from 'ai';
-import { readSecretJson, requireEnv } from '../runtime';
+import { readParameterJson, requireEnv } from '../runtime';
 
 /**
  * Azure OpenAI reviewer.
  *
  * Azure needs more than a key — the resource name, deployment and API version
  * are all account-specific — so the whole connection is stored as JSON in the
- * Azure reviewer secret.
+ * Azure reviewer SSM parameter.
  */
 interface AzureSecret {
   apiKey: string;
@@ -17,8 +17,8 @@ interface AzureSecret {
 }
 
 export async function reviewerModel(): Promise<LanguageModel> {
-  const secret = await readSecretJson<AzureSecret>(
-    requireEnv('AZURE_SECRET_ID'),
+  const secret = await readParameterJson<AzureSecret>(
+    requireEnv('AZURE_PARAM_NAME'),
   );
   const azure = createAzure({
     apiKey: secret.apiKey,

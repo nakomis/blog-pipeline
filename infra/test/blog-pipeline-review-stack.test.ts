@@ -54,8 +54,24 @@ describe('BlogPipelineReviewStack', () => {
     });
   });
 
-  test('creates the three external reviewer secrets', () => {
-    synth(sandboxConfig).resourceCountIs('AWS::SecretsManager::Secret', 3);
+  test('creates the three external reviewer SSM parameters', () => {
+    const template = synth(sandboxConfig);
+    template.resourceCountIs('AWS::SSM::Parameter', 4); // 3 reviewer + 1 ARN
+    for (const provider of ['azure', 'gemini', 'anthropic']) {
+      template.hasResourceProperties('AWS::SSM::Parameter', {
+        Name: `/blog-pipeline/sandbox/reviewer/${provider}`,
+        Type: 'String',
+      });
+    }
+  });
+
+  test('uses the original logical id for the state machine', () => {
+    // The construct was renamed `ReviewStateMachine` → `ReviewLoop`; the
+    // logical id is pinned so the rename does not force a CFN replacement.
+    const template = synth(sandboxConfig);
+    expect(
+      Object.keys(template.findResources('AWS::StepFunctions::StateMachine')),
+    ).toContain('ReviewStateMachineAD9C5398');
   });
 
   test('creates the six review Lambdas', () => {

@@ -121,26 +121,34 @@ Drafts and per-iteration reviewer results are stored in the
 ### Manual prerequisites
 
 The three non-Bedrock reviewers need API keys. `BlogPipelineReviewStack` creates
-the secrets **empty** — populate each one after the first deploy, before running
-the loop. Bedrock needs no secret (it authorises through the Lambda's IAM role),
-but the Nova and Claude models must be enabled in the account's Bedrock model
-access page.
+three SSM `String` parameters (cheaper at this scale than Secrets Manager) with
+a placeholder value — overwrite each one after the first deploy, before running
+the loop. Bedrock needs no parameter (it authorises through the Lambda's IAM
+role), but the Nova and Claude models must be enabled in the account's Bedrock
+model access page.
 
-| Secret | JSON shape |
+| Parameter | JSON shape |
 |---|---|
-| `blog-pipeline/{env}/reviewer/azure` | `{"apiKey","resourceName","deployment","apiVersion"}` |
-| `blog-pipeline/{env}/reviewer/gemini` | `{"apiKey"}` |
-| `blog-pipeline/{env}/reviewer/anthropic` | `{"apiKey"}` |
+| `/blog-pipeline/{env}/reviewer/azure` | `{"apiKey","resourceName","deployment","apiVersion"}` |
+| `/blog-pipeline/{env}/reviewer/gemini` | `{"apiKey"}` |
+| `/blog-pipeline/{env}/reviewer/anthropic` | `{"apiKey"}` |
 
 ```bash
-aws secretsmanager put-secret-value \
+aws ssm put-parameter \
   --profile nakom.is-sandbox \
-  --secret-id blog-pipeline/sandbox/reviewer/gemini \
-  --secret-string '{"apiKey":"…"}'
+  --name /blog-pipeline/sandbox/reviewer/gemini \
+  --type String --overwrite \
+  --value '{"apiKey":"…"}'
 ```
 
-If a secret is left empty that reviewer simply reports `unavailable`; the loop
-still runs as long as the three-reviewer quorum is met.
+CloudFormation does not reconcile drift on subsequent deploys, so a manually
+overwritten value survives. The keys live in plain (unencrypted) parameters
+— acceptable here because the parameter prefix is locked down by IAM to the
+reviewer Lambda role; harden to `SecureString` out of band if that trade-off
+ever changes.
+
+If a parameter is left at its placeholder that reviewer simply reports
+`unavailable`; the loop still runs as long as the three-reviewer quorum is met.
 
 ### Running it end to end
 

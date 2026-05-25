@@ -5,7 +5,6 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
@@ -27,8 +26,10 @@ export interface BlogPipelineReviewStackProps extends cdk.StackProps {
  * not met, or an unexpected exception).
  *
  * Markdown drafts and per-iteration critiques live in a dedicated S3 bucket; the
- * three external reviewer keys live in Secrets Manager, created empty and
- * populated by hand. The state-machine ARN is published to SSM for PIPE-2.
+ * three external reviewer keys live in SSM Parameter Store as plain `String`
+ * parameters (cheaper than Secrets Manager — each `String` parameter is free),
+ * created with a placeholder value and populated by hand. The state-machine ARN
+ * is published to SSM for PIPE-2.
  */
 export class BlogPipelineReviewStack extends cdk.Stack {
   /** The review-loop state machine — triggered per post by PIPE-2. */
@@ -56,25 +57,35 @@ export class BlogPipelineReviewStack extends cdk.Stack {
       autoDeleteObjects: !isProd,
     });
 
-    // ── Reviewer secrets ─────────────────────────────────────────────────
-    // Created empty: CDK gives each a random placeholder value, so an
-    // unpopulated reviewer fails to build its model and is recorded as
-    // `unavailable`. Populate by hand with the documented JSON shape — a
-    // manual edit survives later deploys (the value is generate-on-create).
-    const azureSecret = new secretsmanager.Secret(this, 'AzureReviewerSecret', {
-      secretName: `blog-pipeline/${deployEnv}/reviewer/azure`,
+    // ── Reviewer parameters ──────────────────────────────────────────────
+    // Plain `String` SSM parameters (not Secrets Manager — far cheaper at this
+    // scale) created with a placeholder. An unpopulated parameter fails to
+    // parse as JSON, the reviewer surfaces it as `unavailable`, and the loop
+    // carries on as long as the three-of-four quorum is met. Populate by hand
+    // with the documented JSON shape using `aws ssm put-parameter --overwrite`;
+    // CFN leaves the value alone on subsequent deploys (no drift remediation),
+    // so the manual edit survives.
+    const placeholder = 'REPLACE WITH JSON — see README → Review loop';
+    const reviewerParamName = (provider: string): string =>
+      `${ssmPrefix}/reviewer/${provider}`;
+
+    const azureParam = new ssm.StringParameter(this, 'AzureReviewerParam', {
+      parameterName: reviewerParamName('azure'),
+      stringValue: placeholder,
       description:
         'Azure OpenAI reviewer — JSON {apiKey,resourceName,deployment,apiVersion}',
     });
-    const geminiSecret = new secretsmanager.Secret(this, 'GeminiReviewerSecret', {
-      secretName: `blog-pipeline/${deployEnv}/reviewer/gemini`,
+    const geminiParam = new ssm.StringParameter(this, 'GeminiReviewerParam', {
+      parameterName: reviewerParamName('gemini'),
+      stringValue: placeholder,
       description: 'Google Gemini reviewer — JSON {apiKey}',
     });
-    const anthropicSecret = new secretsmanager.Secret(
+    const anthropicParam = new ssm.StringParameter(
       this,
-      'AnthropicReviewerSecret',
+      'AnthropicReviewerParam',
       {
-        secretName: `blog-pipeline/${deployEnv}/reviewer/anthropic`,
+        parameterName: reviewerParamName('anthropic'),
+        stringValue: placeholder,
         description: 'Anthropic reviewer — JSON {apiKey}',
       },
     );
@@ -123,15 +134,15 @@ export class BlogPipelineReviewStack extends cdk.Stack {
       memorySize: 512,
       environment: {
         DRAFTS_BUCKET: draftsBucket.bucketName,
-        AZURE_SECRET_ID: azureSecret.secretName,
-        GEMINI_SECRET_ID: geminiSecret.secretName,
-        ANTHROPIC_SECRET_ID: anthropicSecret.secretName,
+        AZURE_PARAM_NAME: azureParam.parameterName,
+        GEMINI_PARAM_NAME: geminiParam.parameterName,
+        ANTHROPIC_PARAM_NAME: anthropicParam.parameterName,
       },
     });
     draftsBucket.grantRead(reviewerFn);
-    azureSecret.grantRead(reviewerFn);
-    geminiSecret.grantRead(reviewerFn);
-    anthropicSecret.grantRead(reviewerFn);
+    azureParam.grantRead(reviewerFn);
+    geminiParam.grantRead(reviewerFn);
+    anthropicParam.grantRead(reviewerFn);
     reviewerFn.addToRolePolicy(bedrockInvoke);
 
     const gateFn = makeFn('GateFn', 'gate', {
@@ -295,11 +306,19 @@ export class BlogPipelineReviewStack extends cdk.Stack {
       catchToException,
     );
 
-    this.stateMachine = new sfn.StateMachine(this, 'ReviewStateMachine', {
+    this.stateMachine = new sfn.StateMachine(this, 'ReviewLoop', {
       stateMachineName: `blog-pipeline-review-${deployEnv}`,
       definitionBody: sfn.DefinitionBody.fromChainable(loadDraft),
       timeout: cdk.Duration.minutes(30),
     });
+    // Preserve the original logical id from the construct's previous name
+    // (`ReviewStateMachine`) so the rename is purely a code-side tidy-up:
+    // CFN sees the same resource and updates it in place rather than trying
+    // to replace it (which would collide on the explicit `stateMachineName`).
+    // The auto-generated IAM role under this construct is still allowed to
+    // be replaced cleanly.
+    (this.stateMachine.node.defaultChild as sfn.CfnStateMachine)
+      .overrideLogicalId('ReviewStateMachineAD9C5398');
 
     // ── Discovery — published for PIPE-2's webhook ───────────────────────
     new ssm.StringParameter(this, 'StateMachineArnParam', {
