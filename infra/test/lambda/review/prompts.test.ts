@@ -7,7 +7,7 @@ import {
 import type { ReviewResult } from '../../../lambda/review/schema';
 
 const ok = (blocker: boolean): ReviewResult => ({
-  provider: 'bedrock',
+  provider: 'grok',
   status: 'ok',
   score: 6,
   blocker,

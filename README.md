@@ -103,10 +103,13 @@ The review loop (PIPE-3) is an AWS Step Functions state machine,
 1. **LoadDraft** — checks the post item and its iteration-1 draft exist, marks
    the post `reviewing`.
 2. **ReviewFanOut** — a `Map` state fans the draft out to four LLM reviewers in
-   parallel (Bedrock Nova, Azure OpenAI, Google Gemini, Anthropic Claude). Each
-   returns a structured verdict — a publishability score and any blockers — via
-   the Vercel AI SDK with a Zod schema. A reviewer that errors is recorded as
-   `unavailable` rather than failing the run.
+   parallel: Azure OpenAI (GPT-5-pro), Google Gemini, Anthropic Claude Opus, and
+   Grok-4 on Azure AI Foundry. Each returns a structured verdict — a
+   publishability score and any blockers — via the Vercel AI SDK with a Zod
+   schema. A reviewer that errors is recorded as `unavailable` rather than
+   failing the run. (The Bedrock provider code is kept in the repo for possible
+   future re-inclusion, but is not currently fanned out — see the comment in
+   `lib/config.ts` for the rationale.)
 3. **Gate** — a deterministic, no-LLM decision: it needs a quorum of three of
    the four reviewers to have returned a verdict, every verdict at or above the
    publishability threshold, and no blockers.
@@ -120,18 +123,26 @@ Drafts and per-iteration reviewer results are stored in the
 
 ### Manual prerequisites
 
-The three non-Bedrock reviewers need API keys. `BlogPipelineReviewStack` creates
-three SSM `String` parameters (cheaper at this scale than Secrets Manager) with
-a placeholder value — overwrite each one after the first deploy, before running
-the loop. Bedrock needs no parameter (it authorises through the Lambda's IAM
-role), but the Nova and Claude models must be enabled in the account's Bedrock
-model access page.
+All four reviewers need API keys. `BlogPipelineReviewStack` creates four SSM
+`String` parameters (cheaper at this scale than Secrets Manager) with a
+placeholder value — overwrite each one after the first deploy, before running
+the loop. The redrafter still runs on Bedrock (Claude Sonnet via the EU
+cross-region inference profile), so the Sonnet model must be enabled in the
+account's Bedrock model access page.
 
 | Parameter | JSON shape |
 |---|---|
 | `/blog-pipeline/{env}/reviewer/azure` | `{"apiKey","resourceName","deployment","apiVersion"}` |
 | `/blog-pipeline/{env}/reviewer/gemini` | `{"apiKey"}` |
 | `/blog-pipeline/{env}/reviewer/anthropic` | `{"apiKey"}` |
+| `/blog-pipeline/{env}/reviewer/grok` | `{"apiKey","endpoint","deployment","apiVersion"}` |
+
+The `azure` slot is the classic Azure OpenAI URL shape
+(`https://<resourceName>.openai.azure.com/openai/...`). The `grok` slot is the
+Azure AI Foundry `/models/chat/completions` endpoint — `endpoint` is the full
+Foundry hostname (e.g. `https://<instance>.services.ai.azure.com`), `deployment`
+is the Foundry deployment name (e.g. `grok-4.3`), and `apiVersion` is the
+Foundry inference API version (e.g. `2024-05-01-preview`).
 
 ```bash
 aws ssm put-parameter \
@@ -139,6 +150,12 @@ aws ssm put-parameter \
   --name /blog-pipeline/sandbox/reviewer/gemini \
   --type String --overwrite \
   --value '{"apiKey":"…"}'
+
+aws ssm put-parameter \
+  --profile nakom.is-sandbox \
+  --name /blog-pipeline/sandbox/reviewer/grok \
+  --type String --overwrite \
+  --value '{"apiKey":"…","endpoint":"https://<instance>.services.ai.azure.com","deployment":"grok-4.3","apiVersion":"2024-05-01-preview"}'
 ```
 
 CloudFormation does not reconcile drift on subsequent deploys, so a manually

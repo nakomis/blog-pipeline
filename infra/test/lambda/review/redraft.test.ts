@@ -19,7 +19,7 @@ const mockRedraftModel = redraftModel as jest.Mock;
 
 const reviews: ReviewResult[] = [
   {
-    provider: 'bedrock',
+    provider: 'grok',
     status: 'ok',
     score: 6,
     blocker: false,

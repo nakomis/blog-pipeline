@@ -23,7 +23,7 @@ describe('decideGate', () => {
   describe('quorum', () => {
     test('fails as fail-quorum when fewer than 3 reviewers return a verdict', () => {
       const result = decideGate({
-        reviews: [ok('bedrock', 9), ok('gemini', 9), down('azure'), down('anthropic')],
+        reviews: [ok('grok', 9), ok('gemini', 9), down('azure'), down('anthropic')],
         iteration: 1,
       });
       expect(result.decision).toBe('fail-quorum');
@@ -32,7 +32,7 @@ describe('decideGate', () => {
 
     test('quorum is checked before the score gate, even at the iteration cap', () => {
       const result = decideGate({
-        reviews: [ok('bedrock', 10), down('gemini'), down('azure'), down('anthropic')],
+        reviews: [ok('grok', 10), down('gemini'), down('azure'), down('anthropic')],
         iteration: 4,
       });
       expect(result.decision).toBe('fail-quorum');
@@ -41,7 +41,7 @@ describe('decideGate', () => {
 
     test('minScore is null when no reviewer returned a verdict', () => {
       const result = decideGate({
-        reviews: [down('bedrock'), down('gemini'), down('azure'), down('anthropic')],
+        reviews: [down('grok'), down('gemini'), down('azure'), down('anthropic')],
         iteration: 1,
       });
       expect(result.decision).toBe('fail-quorum');
@@ -52,7 +52,7 @@ describe('decideGate', () => {
 
     test('a sub-quorum result still reports minScore and blocker over the ok reviews', () => {
       const result = decideGate({
-        reviews: [ok('bedrock', 6, true), ok('gemini', 9), down('azure'), down('anthropic')],
+        reviews: [ok('grok', 6, true), ok('gemini', 9), down('azure'), down('anthropic')],
         iteration: 1,
       });
       expect(result.decision).toBe('fail-quorum');
@@ -64,7 +64,7 @@ describe('decideGate', () => {
   describe('pass', () => {
     test('passes when all four reviewers are >= 8 with no blocker', () => {
       const result = decideGate({
-        reviews: [ok('bedrock', 8), ok('gemini', 9), ok('azure', 10), ok('anthropic', 8)],
+        reviews: [ok('grok', 8), ok('gemini', 9), ok('azure', 10), ok('anthropic', 8)],
         iteration: 1,
       });
       expect(result.decision).toBe('pass');
@@ -75,7 +75,7 @@ describe('decideGate', () => {
 
     test('passes on exactly the quorum of 3 reviewers, all >= 8', () => {
       const result = decideGate({
-        reviews: [ok('bedrock', 8), ok('gemini', 9), ok('anthropic', 9), down('azure')],
+        reviews: [ok('grok', 8), ok('gemini', 9), ok('anthropic', 9), down('azure')],
         iteration: 2,
       });
       expect(result.decision).toBe('pass');
@@ -83,7 +83,7 @@ describe('decideGate', () => {
 
     test('a pass at the iteration cap is still a pass, not fail-capped', () => {
       const result = decideGate({
-        reviews: [ok('bedrock', 9), ok('gemini', 9), ok('azure', 9), ok('anthropic', 9)],
+        reviews: [ok('grok', 9), ok('gemini', 9), ok('azure', 9), ok('anthropic', 9)],
         iteration: 4,
       });
       expect(result.decision).toBe('pass');
@@ -94,7 +94,7 @@ describe('decideGate', () => {
   describe('loop', () => {
     test('loops when one reviewer scores below the threshold', () => {
       const result = decideGate({
-        reviews: [ok('bedrock', 7), ok('gemini', 9), ok('azure', 9), ok('anthropic', 9)],
+        reviews: [ok('grok', 7), ok('gemini', 9), ok('azure', 9), ok('anthropic', 9)],
         iteration: 1,
       });
       expect(result.decision).toBe('loop');
@@ -103,7 +103,7 @@ describe('decideGate', () => {
 
     test('loops when a reviewer raises a blocker despite high scores', () => {
       const result = decideGate({
-        reviews: [ok('bedrock', 9, true), ok('gemini', 10), ok('azure', 9), ok('anthropic', 9)],
+        reviews: [ok('grok', 9, true), ok('gemini', 10), ok('azure', 9), ok('anthropic', 9)],
         iteration: 2,
       });
       expect(result.decision).toBe('loop');
@@ -114,7 +114,7 @@ describe('decideGate', () => {
   describe('fail-capped', () => {
     test('fails as fail-capped when a low score persists at iteration 4', () => {
       const result = decideGate({
-        reviews: [ok('bedrock', 7), ok('gemini', 9), ok('azure', 9), ok('anthropic', 9)],
+        reviews: [ok('grok', 7), ok('gemini', 9), ok('azure', 9), ok('anthropic', 9)],
         iteration: 4,
       });
       expect(result.decision).toBe('fail-capped');
@@ -123,7 +123,7 @@ describe('decideGate', () => {
 
     test('fails as fail-capped when a blocker persists at iteration 4', () => {
       const result = decideGate({
-        reviews: [ok('bedrock', 9), ok('gemini', 9), ok('azure', 9, true), ok('anthropic', 9)],
+        reviews: [ok('grok', 9), ok('gemini', 9), ok('azure', 9, true), ok('anthropic', 9)],
         iteration: 4,
       });
       expect(result.decision).toBe('fail-capped');
@@ -131,7 +131,7 @@ describe('decideGate', () => {
   });
 
   test('capped is false below the iteration cap and true at it', () => {
-    const reviews = [ok('bedrock', 9), ok('gemini', 9), ok('azure', 9), ok('anthropic', 9)];
+    const reviews = [ok('grok', 9), ok('gemini', 9), ok('azure', 9), ok('anthropic', 9)];
     expect(decideGate({ reviews, iteration: 3 }).capped).toBe(false);
     expect(decideGate({ reviews, iteration: 4 }).capped).toBe(true);
   });
@@ -140,7 +140,7 @@ describe('decideGate', () => {
 describe('handler', () => {
   test('returns the decideGate result', async () => {
     const result = await handler({
-      reviews: [ok('bedrock', 9), ok('gemini', 9), ok('azure', 9), ok('anthropic', 9)],
+      reviews: [ok('grok', 9), ok('gemini', 9), ok('azure', 9), ok('anthropic', 9)],
       iteration: 1,
     });
     expect(result.decision).toBe('pass');
