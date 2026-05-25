@@ -13,7 +13,13 @@ import type {
  * The pipeline stages a post can occupy — mirrors `PIPELINE_STAGES` in the web
  * app. The `by-status` GSI is partitioned on this value.
  */
-const VALID_STATUSES = ['queued', 'reviewing', 'staged', 'published'] as const;
+const VALID_STATUSES = [
+  'queued',
+  'reviewing',
+  'staged',
+  'published',
+  'failed',
+] as const;
 type PostStatus = (typeof VALID_STATUSES)[number];
 
 /** Name of the GSI on the posts table — see `BlogPipelineStack`. */

@@ -15,6 +15,9 @@ export const PIPELINE_STAGES = [
   { id: 'reviewing', label: 'In review' },
   { id: 'staged', label: 'In the bag' },
   { id: 'published', label: 'Published' },
+  // A terminal off-ramp: posts the review loop could not pass — capped after
+  // four iterations, quorum not met, or an unexpected error (PIPE-3).
+  { id: 'failed', label: 'Failed review' },
 ] as const;
 
 export type PipelineStageId = (typeof PIPELINE_STAGES)[number]['id'];

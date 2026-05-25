@@ -1,11 +1,14 @@
 <mxfile host="app.diagrams.net">
   <diagram name="blog-pipeline" id="blog-pipeline-architecture">
-    <mxGraphModel dx="1024" dy="768" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="826" math="0" shadow="0">
+    <mxGraphModel dx="1024" dy="768" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="1120" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="title" value="Blog Pipeline — PIPE-1 dashboard read path" style="text;html=1;align=center;verticalAlign=middle;fontSize=16;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="320" y="50" width="520" height="30" as="geometry" />
+        <mxCell id="title" value="Blog Pipeline — dashboard read path &amp; cloud review loop" style="text;html=1;align=center;verticalAlign=middle;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="320" y="30" width="520" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="dash-title" value="Dashboard read path — PIPE-1" style="text;html=1;align=center;verticalAlign=middle;fontSize=13;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="320" y="70" width="520" height="20" as="geometry" />
         </mxCell>
         <mxCell id="browser" value="Browser&#10;(dashboard SPA)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
           <mxGeometry x="80" y="360" width="150" height="80" as="geometry" />
@@ -53,6 +56,48 @@
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e7" value="Scan / Query by-status GSI" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" edge="1" parent="1" source="lambda" target="dynamodb">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="divider" value="" style="line;strokeWidth=1;html=1;strokeColor=#cccccc;" vertex="1" parent="1">
+          <mxGeometry x="60" y="600" width="1050" height="10" as="geometry" />
+        </mxCell>
+        <mxCell id="review-title" value="Cloud review loop — PIPE-3" style="text;html=1;align=center;verticalAlign=middle;fontSize=13;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="320" y="620" width="520" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="trigger" value="PIPE-2 webhook&#10;/ seed-draft script&#10;StartExecution {slug}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="80" y="700" width="160" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="statemachine" value="Step Functions — blog-pipeline-review&#10;&#10;LoadDraft → ReviewFanOut (Map, ×4 providers)&#10;→ Gate → PersistIteration → Decide&#10;&#160;&#160;• loop → Redraft → ReviewFanOut&#10;&#160;&#160;• pass / capped / quorum / exception → SetOutcome&#10;(deterministic gate, max 4 iterations)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;verticalAlign=top;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="320" y="680" width="430" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="secrets" value="Secrets Manager&#10;3 reviewer secrets&#10;(Azure / Gemini / Anthropic keys)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="80" y="920" width="180" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="s3drafts" value="S3 bucket&#10;blog-pipeline-drafts&#10;(drafts + reviews per iteration)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="330" y="920" width="190" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="bedrock" value="Amazon Bedrock&#10;Nova Pro (reviewer)&#10;Claude Sonnet (redraft)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="570" y="920" width="180" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="extapis" value="External LLM APIs&#10;Azure OpenAI / Google Gemini&#10;/ Anthropic" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;" vertex="1" parent="1">
+          <mxGeometry x="820" y="690" width="180" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="re1" value="StartExecution" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" edge="1" parent="1" source="trigger" target="statemachine">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="re2" value="read keys" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;fontSize=11;" edge="1" parent="1" source="statemachine" target="secrets">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="re3" value="read / write drafts + reviews" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" edge="1" parent="1" source="statemachine" target="s3drafts">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="re4" value="Bedrock reviewer + redraft" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" edge="1" parent="1" source="statemachine" target="bedrock">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="re5" value="reviewer fan-out" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" edge="1" parent="1" source="statemachine" target="extapis">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="re6" value="status / score / iteration / outcome" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=11;" edge="1" parent="1" source="statemachine" target="dynamodb">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
       </root>

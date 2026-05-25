@@ -124,6 +124,12 @@
   padding: 0.1rem 0.5rem;
 }
 
+/* The failed-review lane is a terminal off-ramp — mark it apart from the
+   happy-path stages with a red heading rule. */
+.stage[data-stage='failed'] h2 {
+  border-bottom-color: #e0556c;
+}
+
 .stage__empty {
   color: var(--muted);
   font-size: 0.9rem;

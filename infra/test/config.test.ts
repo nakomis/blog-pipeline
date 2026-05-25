@@ -2,6 +2,8 @@ import {
   resolveConfig,
   DEPLOYMENT_TRACKER_ACCOUNT_ID,
   DEPLOYMENT_TRACKER_DOMAIN,
+  REVIEW,
+  requiredReviewers,
 } from '../lib/config';
 
 describe('resolveConfig', () => {
@@ -50,5 +52,26 @@ describe('deployment tracker constants', () => {
   test('point at the prod account and the stable tracker domain', () => {
     expect(DEPLOYMENT_TRACKER_ACCOUNT_ID).toBe('637423226886');
     expect(DEPLOYMENT_TRACKER_DOMAIN).toBe('api.infra.nakomis.com');
+  });
+});
+
+describe('review loop config', () => {
+  test('fans out to four providers', () => {
+    expect(REVIEW.providers).toEqual([
+      'bedrock',
+      'azure',
+      'gemini',
+      'anthropic',
+    ]);
+  });
+
+  test('caps the loop and sets the publishability threshold', () => {
+    expect(REVIEW.maxIterations).toBe(4);
+    expect(REVIEW.publishabilityThreshold).toBe(8);
+  });
+
+  test('requiredReviewers is ceil(2/3 of the providers) — 3 of 4', () => {
+    expect(REVIEW.quorum).toBeCloseTo(2 / 3);
+    expect(requiredReviewers()).toBe(3);
   });
 });
