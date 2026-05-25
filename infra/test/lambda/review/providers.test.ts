@@ -13,13 +13,10 @@ beforeEach(() => {
   delete process.env.AZURE_PARAM_NAME;
   delete process.env.GEMINI_PARAM_NAME;
   delete process.env.ANTHROPIC_PARAM_NAME;
+  delete process.env.GROK_PARAM_NAME;
 });
 
 describe('reviewerModel registry', () => {
-  test('bedrock needs no parameter and builds a model', async () => {
-    await expect(reviewerModel('bedrock')).resolves.toBeDefined();
-  });
-
   test('azure reads its parameter and builds a model', async () => {
     process.env.AZURE_PARAM_NAME = '/blog-pipeline/test/reviewer/azure';
     ssmMock
@@ -53,8 +50,29 @@ describe('reviewerModel registry', () => {
     await expect(reviewerModel('anthropic')).resolves.toBeDefined();
   });
 
+  test('grok reads its parameter and builds a model', async () => {
+    process.env.GROK_PARAM_NAME = '/blog-pipeline/test/reviewer/grok';
+    ssmMock
+      .on(GetParameterCommand, { Name: '/blog-pipeline/test/reviewer/grok' })
+      .resolves({
+        Parameter: {
+          Value: JSON.stringify({
+            apiKey: 'k',
+            endpoint: 'https://nakomis-foundry.services.ai.azure.com',
+            deployment: 'grok-4.3',
+            apiVersion: '2024-05-01-preview',
+          }),
+        },
+      });
+    await expect(reviewerModel('grok')).resolves.toBeDefined();
+  });
+
   test('a provider whose parameter env var is unset rejects', async () => {
     await expect(reviewerModel('azure')).rejects.toThrow(/AZURE_PARAM_NAME/);
+  });
+
+  test('grok rejects when its parameter env var is unset', async () => {
+    await expect(reviewerModel('grok')).rejects.toThrow(/GROK_PARAM_NAME/);
   });
 });
 

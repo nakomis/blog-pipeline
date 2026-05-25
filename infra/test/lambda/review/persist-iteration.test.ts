@@ -18,7 +18,7 @@ const ddbMock = mockClient(DynamoDBDocumentClient);
 const mockPutReviews = putReviews as jest.Mock;
 
 const reviews: ReviewResult[] = [
-  { provider: 'bedrock', status: 'ok', score: 8, blocker: false, critique: 'c' },
+  { provider: 'grok', status: 'ok', score: 8, blocker: false, critique: 'c' },
 ];
 
 beforeEach(() => {

@@ -54,10 +54,10 @@ describe('BlogPipelineReviewStack', () => {
     });
   });
 
-  test('creates the three external reviewer SSM parameters', () => {
+  test('creates the four external reviewer SSM parameters', () => {
     const template = synth(sandboxConfig);
-    template.resourceCountIs('AWS::SSM::Parameter', 4); // 3 reviewer + 1 ARN
-    for (const provider of ['azure', 'gemini', 'anthropic']) {
+    template.resourceCountIs('AWS::SSM::Parameter', 5); // 4 reviewer + 1 ARN
+    for (const provider of ['azure', 'gemini', 'anthropic', 'grok']) {
       template.hasResourceProperties('AWS::SSM::Parameter', {
         Name: `/blog-pipeline/sandbox/reviewer/${provider}`,
         Type: 'String',

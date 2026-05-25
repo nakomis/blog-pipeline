@@ -15,7 +15,7 @@ const input = {
   slug: 'a-post',
   iteration: 1,
   draftKey: 'a-post/iteration-1/draft.md',
-  provider: 'bedrock' as const,
+  provider: 'grok' as const,
 };
 
 beforeEach(() => {
@@ -29,7 +29,7 @@ test('returns an ok ReviewResult built from the model verdict', async () => {
     object: { score: 8, blocker: false, critique: 'solid' },
   });
   await expect(handler(input)).resolves.toEqual({
-    provider: 'bedrock',
+    provider: 'grok',
     status: 'ok',
     score: 8,
     blocker: false,

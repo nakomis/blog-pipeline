@@ -78,8 +78,18 @@ export const BLOG_CONTENT_REPO = 'nakomis/blog-content';
  * account-specific and lives in the Azure reviewer secret.
  */
 export const REVIEW = {
-  /** Reviewer providers, fanned out in parallel by the state machine. */
-  providers: ['bedrock', 'azure', 'gemini', 'anthropic'] as const,
+  /**
+   * Reviewer providers, fanned out in parallel by the state machine.
+   *
+   * The agreed best-in-field panel from the 22 May 2026 Cabal bake-off:
+   * Opus (Anthropic) + Gemini 3 Pro + Grok-4 (on Azure AI Foundry) + GPT-5-pro
+   * (on Azure OpenAI). The Bedrock `nova-pro` reviewer was deliberately dropped
+   * — the sub-cent Bedrock chat models rubber-stamped posts and a confidently
+   * wrong "looks fine" is worse than no review. The Bedrock provider code and
+   * model id are retained below in case we want to flip it back in later (and
+   * because the redrafter still runs on Bedrock anyway).
+   */
+  providers: ['azure', 'gemini', 'anthropic', 'grok'] as const,
   /** Minimum publishability score (out of 10) for a clean pass. */
   publishabilityThreshold: 8,
   /** Hard cap on review iterations before the post is failed as `capped`. */
@@ -92,10 +102,11 @@ export const REVIEW = {
    */
   quorum: 2 / 3,
   /**
-   * Model ids per provider. The Bedrock ids use the `eu.` cross-region
+   * Model ids per provider. The Bedrock id uses the `eu.` cross-region
    * inference profile (eu-west-2 is in the EU geo); the Anthropic id is a
-   * direct-API id. Azure's deployment name is not here — it comes from the
-   * Azure reviewer secret.
+   * direct-API id. Azure's deployment name and Grok's deployment name are
+   * account-specific and live in their respective reviewer SSM parameters.
+   * `bedrock` is retained for possible future re-inclusion.
    */
   models: {
     bedrock: 'eu.amazon.nova-pro-v1:0',

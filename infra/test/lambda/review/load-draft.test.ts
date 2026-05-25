@@ -32,7 +32,7 @@ test('marks the post reviewing and returns the starting state', async () => {
     slug: 'a-post',
     iteration: 1,
     draftKey: 'a-post/iteration-1/draft.md',
-    providers: ['bedrock', 'azure', 'gemini', 'anthropic'],
+    providers: ['azure', 'gemini', 'anthropic', 'grok'],
   });
   const update = ddbMock.commandCalls(UpdateCommand)[0].args[0].input;
   expect(update.ExpressionAttributeValues?.[':reviewing']).toBe('reviewing');
