@@ -1,7 +1,7 @@
 import { createAnthropic } from '@ai-sdk/anthropic';
 import type { LanguageModel } from 'ai';
 import { REVIEW } from '../../../lib/config';
-import { readSecretJson, requireEnv } from '../runtime';
+import { readParameterJson, requireEnv } from '../runtime';
 
 /**
  * Anthropic reviewer — Claude Opus via the direct Anthropic API.
@@ -14,8 +14,8 @@ interface AnthropicSecret {
 }
 
 export async function reviewerModel(): Promise<LanguageModel> {
-  const secret = await readSecretJson<AnthropicSecret>(
-    requireEnv('ANTHROPIC_SECRET_ID'),
+  const secret = await readParameterJson<AnthropicSecret>(
+    requireEnv('ANTHROPIC_PARAM_NAME'),
   );
   const anthropic = createAnthropic({ apiKey: secret.apiKey });
   return anthropic(REVIEW.models.anthropic);

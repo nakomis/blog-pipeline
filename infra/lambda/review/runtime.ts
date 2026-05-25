@@ -1,14 +1,16 @@
-import {
-  SecretsManagerClient,
-  GetSecretValueCommand,
-} from '@aws-sdk/client-secrets-manager';
+import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 
 /**
  * Shared runtime plumbing for the review Lambdas — environment access and
- * Secrets Manager reads.
+ * SSM Parameter Store reads.
+ *
+ * The reviewer keys live in plain-`String` SSM parameters (not Secrets Manager
+ * and not `SecureString`) for cost: each `String` parameter is free, whereas
+ * a Secrets Manager secret is billed per-secret per-month. The keys are still
+ * scoped by IAM — only the reviewer Lambda role can read this prefix.
  */
 
-const secrets = new SecretsManagerClient({});
+const ssm = new SSMClient({});
 
 /** Read a required environment variable, throwing a clear error if unset. */
 export function requireEnv(name: string): string {
@@ -20,18 +22,18 @@ export function requireEnv(name: string): string {
 }
 
 /**
- * Fetch and JSON-parse a Secrets Manager secret.
+ * Fetch and JSON-parse an SSM parameter.
  *
- * Throws if the secret has no string value — an empty (not-yet-populated)
- * reviewer secret therefore surfaces as a provider failure, which the reviewer
- * fan-out records as `unavailable`.
+ * Throws if the parameter has no value (an empty placeholder left over from
+ * the stack's first deploy, before the operator ran `put-parameter`) — that
+ * surfaces as a provider failure, which the reviewer fan-out then records as
+ * `unavailable` rather than failing the iteration.
  */
-export async function readSecretJson<T>(secretId: string): Promise<T> {
-  const res = await secrets.send(
-    new GetSecretValueCommand({ SecretId: secretId }),
-  );
-  if (!res.SecretString) {
-    throw new Error(`Secret ${secretId} has no string value`);
+export async function readParameterJson<T>(name: string): Promise<T> {
+  const res = await ssm.send(new GetParameterCommand({ Name: name }));
+  const value = res.Parameter?.Value;
+  if (!value) {
+    throw new Error(`SSM parameter ${name} has no value`);
   }
-  return JSON.parse(res.SecretString) as T;
+  return JSON.parse(value) as T;
 }
