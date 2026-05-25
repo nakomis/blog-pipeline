@@ -62,6 +62,14 @@ export const DEPLOYMENT_TRACKER_ACCOUNT_ID = CONFIG.prod.accountId;
 export const DEPLOYMENT_TRACKER_DOMAIN = 'api.infra.nakomis.com';
 
 /**
+ * The GitHub repository whose `push` events trigger the review pipeline
+ * (PIPE-2). The trigger role's OIDC trust policy is scoped to this repo on
+ * `refs/heads/main` — only pushes to that ref from this repo can assume the
+ * role.
+ */
+export const BLOG_CONTENT_REPO = 'nakomis/blog-content';
+
+/**
  * Cloud review loop (PIPE-3) tuning.
  *
  * These are stable product constants, not environment-specific values — the

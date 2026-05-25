@@ -20,6 +20,7 @@ If you find this useful, please consider buying me a coffee:
 - [Environments](#environments)
 - [Project status](#project-status)
 - [Review loop](#review-loop)
+- [Trigger](#trigger)
 - [First deployment](#first-deployment)
 - [Architecture Diagrams](#architecture-diagrams)
 - [Support](#support)
@@ -64,7 +65,7 @@ Work is tracked in Taiga under the **PIPE** prefix —
 | Story | Feature |
 |---|---|
 | PIPE-1 | Post dashboard — pipeline stage overview |
-| PIPE-2 | Review trigger — webhook on blog-content push |
+| PIPE-2 | Review trigger — GitHub Actions OIDC on blog-content push |
 | PIPE-3 | Cloud review loop — Step Functions scored fan-out |
 | PIPE-4 | The bag — staging queue and approval UI |
 | PIPE-5 | Publish — commit to blog-content with optional schedule |
@@ -82,9 +83,16 @@ exposing the key to the browser.
 **PIPE-3 is implemented:** the cloud review loop — a Step Functions state machine
 (`blog-pipeline-review`) that fans a draft out to four LLM reviewers in parallel,
 scores it through a deterministic gate, and has Claude Sonnet re-draft against the
-critique, up to four iterations. See [Review loop](#review-loop) below. The
-remaining stories (the review trigger webhook, the staging queue, publishing) are
-built on top of these, story by story.
+critique, up to four iterations. See [Review loop](#review-loop) below.
+
+**PIPE-2 is implemented:** the review trigger — a GitHub Actions workflow in
+`nakomis/blog-content` assumes an OIDC-trusted IAM role
+(`blog-pipeline-trigger-{env}`) on every push to `main` touching `blog/*.md`,
+and queues each changed post into the pipeline by writing the draft to S3,
+the row to DynamoDB and starting a state-machine execution — all over IAM,
+with no public endpoint anywhere. See [Trigger](#trigger) below. The remaining
+stories (the staging queue, publishing) are built on top of these, story by
+story.
 
 To populate the dashboard before the review loop exists, seed sample data:
 
@@ -150,10 +158,11 @@ ever changes.
 If a parameter is left at its placeholder that reviewer simply reports
 `unavailable`; the loop still runs as long as the three-reviewer quorum is met.
 
-### Running it end to end
+### Sandbox dry-run
 
-There is no trigger yet — the webhook is PIPE-2. To exercise the loop, seed a
-deliberately-imperfect draft and start an execution by hand:
+In prod the trigger fires automatically (see [Trigger](#trigger)); in sandbox
+the trigger role exists but no workflow targets it, so the loop is exercised
+by hand with a deliberately-imperfect seeded draft:
 
 ```bash
 cd infra
@@ -168,8 +177,43 @@ aws stepfunctions start-execution \
   --input '{"slug":"why-i-use-git-worktrees"}'
 ```
 
-The seed script writes a `queued` post item and its iteration-1 draft to S3; pass
-an alternative slug as an argument to `seed-draft.ts` to seed more than one.
+The seed script writes a `queued` post item and its iteration-1 draft to S3;
+pass an alternative slug as an argument to `seed-draft.ts` to seed more than
+one.
+
+## Trigger
+
+A push to `nakomis/blog-content`'s `main` branch that touches `blog/*.md`
+runs a GitHub Actions workflow (`.github/workflows/trigger-review.yml` in
+that repo). The workflow assumes the `blog-pipeline-trigger-prod` IAM role
+via OIDC — no static credentials, no public endpoint, no shared secret —
+and for each added or modified post does three AWS API calls directly:
+
+1. `s3:PutObject` → `s3://blog-pipeline-drafts-prod/{slug}/iteration-1/draft.md`
+2. `dynamodb:PutItem` on the posts table (`queued`, with a `ConditionExpression`
+   so a still-in-flight review isn't double-queued)
+3. `states:StartExecution` on `blog-pipeline-review-prod` with `{"slug":"…"}`
+
+The slug is the filename's date prefix stripped — `blog/2026-05-22-my-post.md`
+queues as `my-post`. Deleted files are ignored.
+
+The role is created by `BlogPipelineTriggerStack` in both environments for
+parity; only prod is currently wired to a workflow. Sandbox is exercised via
+the `seed-draft` script above. To switch the workflow to sandbox temporarily,
+change the four `env:` values in `trigger-review.yml` to the sandbox role
+ARN, bucket name, table name and state-machine ARN.
+
+### Manual prerequisite
+
+The role ARN must be pasted into the workflow's `env:` block after the first
+deploy. After that, every subsequent deploy is fully automated:
+
+```bash
+aws ssm get-parameter \
+  --profile nakom.is-admin \
+  --name /blog-pipeline/prod/trigger/role-arn \
+  --query Parameter.Value --output text
+```
 
 ## First deployment
 

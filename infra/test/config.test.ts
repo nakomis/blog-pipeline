@@ -2,6 +2,7 @@ import {
   resolveConfig,
   DEPLOYMENT_TRACKER_ACCOUNT_ID,
   DEPLOYMENT_TRACKER_DOMAIN,
+  BLOG_CONTENT_REPO,
   REVIEW,
   requiredReviewers,
 } from '../lib/config';
@@ -52,6 +53,12 @@ describe('deployment tracker constants', () => {
   test('point at the prod account and the stable tracker domain', () => {
     expect(DEPLOYMENT_TRACKER_ACCOUNT_ID).toBe('637423226886');
     expect(DEPLOYMENT_TRACKER_DOMAIN).toBe('api.infra.nakomis.com');
+  });
+});
+
+describe('trigger constants', () => {
+  test('BLOG_CONTENT_REPO names the source repo for the trigger role', () => {
+    expect(BLOG_CONTENT_REPO).toBe('nakomis/blog-content');
   });
 });
 
