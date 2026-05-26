@@ -138,6 +138,15 @@ the loop. The redrafter still runs on Bedrock (Claude Sonnet via the EU
 cross-region inference profile), so the Sonnet model must be enabled in the
 account's Bedrock model access page.
 
+> ⚠️ **Order matters: deploy first, populate second.** CloudFormation will only
+> *create* the SSM parameters — it has no way to adopt a pre-existing one. If
+> you run `aws ssm put-parameter` for `/blog-pipeline/{env}/reviewer/<provider>`
+> before the first `cdk deploy` of that environment, the next deploy will fail
+> with `Resource of type 'AWS::SSM::Parameter' with identifier '…' already
+> exists.` The recovery is to `aws ssm delete-parameter`, redeploy so CFN
+> creates the placeholder, then `put-parameter --overwrite` to put the real
+> value back. Avoid the round-trip by deploying first.
+
 | Parameter | JSON shape |
 |---|---|
 | `/blog-pipeline/{env}/reviewer/azure` | `{"apiKey","resourceName","deployment","apiVersion"}` |
