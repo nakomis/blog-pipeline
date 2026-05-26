@@ -110,7 +110,11 @@ export const REVIEW = {
    */
   models: {
     bedrock: 'eu.amazon.nova-pro-v1:0',
-    gemini: 'gemini-2.0-flash',
+    // `gemini-3-pro` per the 22 May 2026 Cabal bake-off panel. An earlier draft
+    // of this config had `gemini-2.0-flash`, which Google has since retired for
+    // new API consumers ("This model is no longer available to new users") —
+    // the live e2e run on 26 May surfaced it cleanly via `AI_APICallError`.
+    gemini: 'gemini-3-pro',
     anthropic: 'claude-opus-4-7',
   },
   /** Claude Sonnet on Bedrock redrafts the post between iterations. */
