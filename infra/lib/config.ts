@@ -110,13 +110,17 @@ export const REVIEW = {
    */
   models: {
     bedrock: 'eu.amazon.nova-pro-v1:0',
-    // Gemini 3 Pro per the 22 May 2026 Cabal bake-off panel. The model ID the
-    // Google v1beta API actually accepts is `gemini-3-pro-preview` — Cabal
-    // aliases it as `gemini-3-pro` internally and remaps. An earlier draft of
-    // this config had `gemini-2.0-flash` (retired by Google for new users); a
-    // first fix to `gemini-3-pro` failed with `models/gemini-3-pro is not
-    // found for API version v1beta`, which led us here.
-    gemini: 'gemini-3-pro-preview',
+    // Stable alias that auto-tracks Google's current best Pro Gemini, chosen
+    // after three rounds of preview-treadmill failures on this line:
+    //   `gemini-2.0-flash`     — retired for new users (first live e2e fail)
+    //   `gemini-3-pro`         — not a wire-format model id on v1beta
+    //   `gemini-3-pro-preview` — "no longer available, use a newer model"
+    // (`gemini-3.1-pro-preview` would be the explicit current Pro, but it's
+    // -preview so we'd be back here in 3–6 months. The alias is more robust at
+    // the cost of letting Google silently change which model serves it.) The
+    // Cabal bake-off agreed on "Gemini 3 Pro" — `gemini-pro-latest` honours
+    // the spirit of that without chasing rename treadmills.
+    gemini: 'gemini-pro-latest',
     anthropic: 'claude-opus-4-7',
   },
   /** Claude Sonnet on Bedrock redrafts the post between iterations. */
