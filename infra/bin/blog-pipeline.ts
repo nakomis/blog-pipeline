@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-import * as fs from 'fs';
-import * as path from 'path';
 import * as cdk from 'aws-cdk-lib';
 import { resolveConfig } from '../lib/config';
 import { BlogPipelineStack } from '../lib/blog-pipeline-stack';
@@ -16,17 +14,14 @@ const env = { account: config.accountId, region: config.region };
 // CloudFront certificates must live in us-east-1.
 const usEast1Env = { account: config.accountId, region: 'us-east-1' };
 
-// The version stamped on this deployment and recorded in the tracker (CLOUD-15).
-// CI rewrites version.json before deploying so the tag matches the release.
-const { version } = JSON.parse(
-  fs.readFileSync(path.join(__dirname, '../version.json'), 'utf-8'),
-) as { version: string };
-
 const app = new cdk.App();
 
-// Estate-wide tags: every resource is attributable to a project and version.
+// The deployment version is tracked out-of-band by the deployment tracker
+// (CLOUD-15); it deliberately is NOT applied as a per-resource tag, because
+// bumping a tag on every push forces CloudFormation to update every taggable
+// resource (CloudFront, Lambdas, IAM roles, …) on a no-op deploy. See
+// docs/cdk-deploy-investigation.md (PIPE-8).
 cdk.Tags.of(app).add('MH-Project', 'blog-pipeline');
-cdk.Tags.of(app).add('MH-Version', version);
 
 const dataStack = new BlogPipelineStack(
   app,
