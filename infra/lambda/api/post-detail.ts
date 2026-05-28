@@ -66,9 +66,23 @@ export async function postDetail(
     return jsonResponse(404, { message: `No post '${slug}'` }, cors);
   }
 
-  const latestIteration = Number(
-    Item.latestIteration ?? Item.reviewIteration ?? 1,
+  // Drafts are 1-indexed. `??` does not catch a stored `0` (the value
+  // `reviewIteration` briefly holds as a post enters review), so coerce any
+  // falsy/NaN value to 1 and never go below it.
+  const requestedIteration = Math.max(
+    1,
+    Number(Item.latestIteration ?? Item.reviewIteration ?? 1) || 1,
   );
+  // Mid-review, the requested iteration's draft may not be written yet; fall
+  // back to the latest iteration that actually has a draft (iteration 1 always
+  // does — the trigger writes it).
+  let latestIteration = requestedIteration;
+  while (
+    latestIteration > 1 &&
+    !(await draftExists(draftKey(slug, latestIteration)))
+  ) {
+    latestIteration -= 1;
+  }
 
   const finalMarkdown = await getDraft(draftKey(slug, latestIteration));
   const originalMarkdown =

@@ -90,6 +90,47 @@ test('assembles drafts, iterations and presigned ready images', async () => {
   expect(body.images[1].url).toBeUndefined();
 });
 
+test('a reviewIteration of 0 reads iteration 1, not iteration 0', async () => {
+  // A post just entering review can hold reviewIteration 0; drafts are
+  // 1-indexed, so the bundle must not try to read iteration-0/draft.md.
+  ddbMock.on(GetCommand).resolves({
+    Item: { slug: 'p', title: 'P', status: 'reviewing', reviewIteration: 0 },
+  });
+  s3Mock.on(HeadObjectCommand).rejects(
+    Object.assign(new Error('nf'), { name: 'NotFound' }),
+  );
+  const getMock = s3Mock.on(GetObjectCommand).resolves(draftBody('# first'));
+
+  const res = await postDetail(event('p'));
+
+  expect(res.statusCode).toBe(200);
+  expect(JSON.parse(res.body).finalMarkdown).toBe('# first');
+  for (const call of getMock.calls()) {
+    const { Key } = (call.args[0] as GetObjectCommand).input;
+    expect(Key).not.toContain('iteration-0');
+  }
+});
+
+test('falls back to the latest iteration that has a draft', async () => {
+  // reviewIteration points at 3, but only iterations 1 and 2 have drafts yet.
+  ddbMock.on(GetCommand).resolves({
+    Item: { slug: 'p', title: 'P', status: 'reviewing', reviewIteration: 3 },
+  });
+  const notFound = () => Object.assign(new Error('nf'), { name: 'NotFound' });
+  s3Mock.on(HeadObjectCommand).rejects(notFound());
+  s3Mock.on(HeadObjectCommand, { Key: 'p/iteration-2/draft.md' }).resolves({});
+  s3Mock
+    .on(GetObjectCommand, { Key: 'p/iteration-2/draft.md' })
+    .resolves(draftBody('# second'))
+    .on(GetObjectCommand, { Key: 'p/iteration-1/draft.md' })
+    .resolves(draftBody('# first'));
+
+  const res = await postDetail(event('p'));
+
+  expect(res.statusCode).toBe(200);
+  expect(JSON.parse(res.body).finalMarkdown).toBe('# second');
+});
+
 test('original equals final on a single-iteration post', async () => {
   ddbMock.on(GetCommand).resolves({
     Item: { slug: 'p', title: 'P', status: 'staged', reviewIteration: 1 },

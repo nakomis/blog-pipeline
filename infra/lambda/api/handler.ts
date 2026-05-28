@@ -6,6 +6,7 @@ import { imageCallback } from './image-callback';
 import { listPosts } from './list-posts';
 import { postDetail } from './post-detail';
 import { postEdit, postDecision } from './post-actions';
+import { corsHeaders, jsonResponse } from './http';
 
 /**
  * The dashboard API Lambda — a small router fronting the dashboard routes:
@@ -23,26 +24,31 @@ export async function handler(
 ): Promise<APIGatewayProxyResult> {
   const method = event.httpMethod;
   const resource = event.resource ?? event.path;
+  const cors = corsHeaders(event);
 
-  if (method === 'GET' && resource === '/posts') {
-    return listPosts(event);
+  try {
+    if (method === 'GET' && resource === '/posts') {
+      return await listPosts(event);
+    }
+    if (method === 'GET' && resource === '/posts/{slug}') {
+      return await postDetail(event);
+    }
+    if (method === 'POST' && resource === '/posts/{slug}/edit') {
+      return await postEdit(event);
+    }
+    if (method === 'POST' && resource === '/posts/{slug}/decision') {
+      return await postDecision(event);
+    }
+    if (method === 'POST' && resource === '/image-callback') {
+      return await imageCallback(event);
+    }
+    return jsonResponse(404, { message: `No route for ${method} ${resource}` }, cors);
+  } catch (err) {
+    // Without this, an unhandled throw yields a bare API Gateway 500 with no
+    // CORS headers — the browser then reports an opaque "Failed to fetch"
+    // rather than the real status, so always answer with CORS attached.
+    console.error(`Unhandled error in ${method} ${resource}`, err);
+    const message = err instanceof Error ? err.message : 'Internal error';
+    return jsonResponse(500, { message }, cors);
   }
-  if (method === 'GET' && resource === '/posts/{slug}') {
-    return postDetail(event);
-  }
-  if (method === 'POST' && resource === '/posts/{slug}/edit') {
-    return postEdit(event);
-  }
-  if (method === 'POST' && resource === '/posts/{slug}/decision') {
-    return postDecision(event);
-  }
-  if (method === 'POST' && resource === '/image-callback') {
-    return imageCallback(event);
-  }
-
-  return {
-    statusCode: 404,
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ message: `No route for ${method} ${resource}` }),
-  };
 }
