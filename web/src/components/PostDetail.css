@@ -23,6 +23,7 @@
 }
 .detail__header h1 {
   margin: 0 0 0.4rem;
+  color: var(--heading);
 }
 .detail__meta {
   display: flex;

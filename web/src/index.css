@@ -1,9 +1,10 @@
 :root {
-  --bg: #0f1623;
-  --panel: #1a2436;
-  --text: #e7ecf3;
-  --muted: #8a97ad;
-  --accent: #f5a623;
+  --bg: #282c34;
+  --panel: #21252b;
+  --text: #abb2bf;
+  --heading: #ffffff;
+  --muted: #5c6370;
+  --accent: #98c379;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   color-scheme: dark;
 }

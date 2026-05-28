@@ -114,13 +114,107 @@ export class ApiStack extends cdk.Stack {
     // The shared pool's hosted-login domain runs Managed Login (branding
     // version 2), under which every app client must have a branding resource
     // before its login pages will render — without one the hosted UI returns
-    // "Login pages unavailable". Use Cognito's default styling for now; PIPE-7
-    // replaces it with the nakomis branding.
-    new cognito.CfnManagedLoginBranding(this, 'DashboardLoginBranding', {
-      userPoolId,
-      clientId: userPoolClient.userPoolClientId,
-      useCognitoProvidedValues: true,
-    });
+    // "Login pages unavailable". This applies the nakomis "One Dark" dark
+    // theme so the sign-in page matches the dashboard, with a sage-green
+    // accent (#98c379) for the primary button, links and focus — consistent
+    // with the SPA. Colours are 8-digit RGBA hex (no leading '#').
+    const branding = new cognito.CfnManagedLoginBranding(
+      this,
+      'DashboardLoginBranding',
+      {
+        userPoolId,
+        clientId: userPoolClient.userPoolClientId,
+        useCognitoProvidedValues: false,
+        settings: {
+          components: {
+            pageBackground: {
+              image: { enabled: false },
+              darkMode: { color: '282c34ff' },
+            },
+            pageHeader: {
+              backgroundImage: { enabled: false },
+              logo: { location: 'START', enabled: false },
+              darkMode: { background: { color: '21252bff' }, borderColor: '3e4451ff' },
+            },
+            pageFooter: {
+              backgroundImage: { enabled: false },
+              logo: { location: 'START', enabled: false },
+              darkMode: { background: { color: '21252bff' }, borderColor: '3e4451ff' },
+            },
+            form: {
+              borderRadius: 8,
+              backgroundImage: { enabled: false },
+              logo: { location: 'CENTER', position: 'TOP', enabled: false, formInclusion: 'IN' },
+              darkMode: { backgroundColor: '2c313aff', borderColor: '3e4451ff' },
+            },
+            pageText: {
+              darkMode: { bodyColor: 'abb2bfff', headingColor: 'ffffffff', descriptionColor: '5c6370ff' },
+            },
+            primaryButton: {
+              darkMode: {
+                defaults: { backgroundColor: '98c379ff', textColor: '21252bff' },
+                hover: { backgroundColor: '82b366ff', textColor: '21252bff' },
+                active: { backgroundColor: '6da050ff', textColor: '21252bff' },
+                disabled: { backgroundColor: '2c313aff', borderColor: '3e4451ff' },
+              },
+            },
+            secondaryButton: {
+              darkMode: {
+                defaults: { backgroundColor: '2c313aff', borderColor: '3e4451ff', textColor: 'abb2bfff' },
+                hover: { backgroundColor: '353b45ff', borderColor: '98c379ff', textColor: 'ffffffff' },
+                active: { backgroundColor: '21252bff', borderColor: '3e4451ff', textColor: 'ffffffff' },
+              },
+            },
+            alert: {
+              borderRadius: 4,
+              darkMode: { error: { backgroundColor: '3a1515ff', borderColor: 'e06c75ff' } },
+            },
+            idpButton: {
+              standard: {
+                darkMode: {
+                  defaults: { backgroundColor: '2c313aff', borderColor: '3e4451ff', textColor: 'abb2bfff' },
+                  hover: { backgroundColor: '353b45ff', borderColor: '98c379ff', textColor: 'ffffffff' },
+                  active: { backgroundColor: '21252bff', borderColor: '3e4451ff', textColor: 'ffffffff' },
+                },
+              },
+              custom: {},
+            },
+            phoneNumberSelector: { displayType: 'TEXT' },
+            favicon: { enabledTypes: ['ICO', 'SVG'] },
+          },
+          componentClasses: {
+            input: {
+              borderRadius: 6,
+              darkMode: {
+                defaults: { backgroundColor: '21252bff', borderColor: '3e4451ff' },
+                placeholderColor: '5c6370ff',
+              },
+            },
+            inputLabel: { darkMode: { textColor: 'abb2bfff' } },
+            inputDescription: { darkMode: { textColor: '5c6370ff' } },
+            link: {
+              darkMode: { defaults: { textColor: '98c379ff' }, hover: { textColor: 'b5d8a0ff' } },
+            },
+            optionControls: {
+              darkMode: {
+                defaults: { backgroundColor: '21252bff', borderColor: '3e4451ff' },
+                selected: { backgroundColor: '98c379ff', foregroundColor: '21252bff' },
+              },
+            },
+            focusState: { darkMode: { borderColor: '98c379ff' } },
+          },
+          categories: {
+            global: {
+              colorSchemeMode: 'DARK',
+              pageFooter: { enabled: false },
+              pageHeader: { enabled: false },
+              spacingDensity: 'REGULAR',
+            },
+          },
+        },
+      },
+    );
+    branding.node.addDependency(userPoolClient);
 
     // ── API Lambda (router) ──────────────────────────────────────────────
     // One function fronts two routes: `GET /posts` (the dashboard read path)
