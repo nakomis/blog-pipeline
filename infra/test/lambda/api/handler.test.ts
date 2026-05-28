@@ -26,8 +26,12 @@ const mockDetail = postDetail as jest.Mock;
 const mockEdit = postEdit as jest.Mock;
 const mockDecision = postDecision as jest.Mock;
 
-function event(method: string, resource: string): APIGatewayProxyEvent {
-  return { httpMethod: method, resource } as unknown as APIGatewayProxyEvent;
+function event(
+  method: string,
+  resource: string,
+  headers: Record<string, string> = {},
+): APIGatewayProxyEvent {
+  return { httpMethod: method, resource, headers } as unknown as APIGatewayProxyEvent;
 }
 
 beforeEach(() => jest.clearAllMocks());
@@ -68,4 +72,16 @@ test('returns 404 for an unknown route', async () => {
   expect(res.statusCode).toBe(404);
   expect(mockList).not.toHaveBeenCalled();
   expect(mockCallback).not.toHaveBeenCalled();
+});
+
+test('a thrown route error becomes a 500 carrying CORS headers', async () => {
+  process.env.ALLOWED_ORIGINS = 'https://app.example';
+  mockDetail.mockRejectedValueOnce(new Error('boom'));
+  const res = await handler(
+    event('GET', '/posts/{slug}', { Origin: 'https://app.example' }),
+  );
+  expect(res.statusCode).toBe(500);
+  expect(res.headers?.['access-control-allow-origin']).toBe('https://app.example');
+  expect(JSON.parse(res.body)).toEqual({ message: 'boom' });
+  delete process.env.ALLOWED_ORIGINS;
 });
