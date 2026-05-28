@@ -42,21 +42,30 @@ const webCertStack = new WebCertStack(
   { env: usEast1Env, config, crossRegionReferences: true },
 );
 
+// The review loop (PIPE-3) — Step Functions, reviewer Lambdas and the drafts
+// bucket. Reads and writes the posts table owned by the data stack. Created
+// before the API stack, which consumes its drafts bucket for the image
+// callback (PIPE-6).
+const reviewStack = new BlogPipelineReviewStack(
+  app,
+  `BlogPipeline-Review-${config.deployEnv}`,
+  {
+    env,
+    config,
+    postsTable: dataStack.postsTable,
+    imageJobsTable: dataStack.imageJobsTable,
+  },
+);
+
 new ApiStack(app, `BlogPipeline-Api-${config.deployEnv}`, {
   env,
   config,
   postsTable: dataStack.postsTable,
+  draftsBucket: reviewStack.draftsBucket,
+  imageJobsTable: dataStack.imageJobsTable,
   certificate: webCertStack.certificate,
   crossRegionReferences: true,
 });
-
-// The review loop (PIPE-3) — Step Functions, reviewer Lambdas and the drafts
-// bucket. Reads and writes the posts table owned by the data stack.
-const reviewStack = new BlogPipelineReviewStack(
-  app,
-  `BlogPipeline-Review-${config.deployEnv}`,
-  { env, config, postsTable: dataStack.postsTable },
-);
 
 // The trigger (PIPE-2) — one IAM role assumed via OIDC by the blog-content
 // GitHub Actions workflow to start the review pipeline. Created in both

@@ -1,6 +1,7 @@
 import { mockClient } from 'aws-sdk-client-mock';
 import {
   DynamoDBDocumentClient,
+  GetCommand,
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { handler } from '../../../lambda/review/set-outcome';
@@ -10,6 +11,10 @@ const ddbMock = mockClient(DynamoDBDocumentClient);
 beforeEach(() => {
   ddbMock.reset();
   process.env.POSTS_TABLE_NAME = 'posts';
+  process.env.DRAFTS_BUCKET = 'drafts';
+  // The terminal step now calls applyPlaceholders inline (PIPE-6). With no post
+  // item it cleanly no-ops, so these tests stay focused on the outcome write.
+  ddbMock.on(GetCommand).resolves({});
 });
 
 test('records a clean pass as staged/passed with no error detail', async () => {

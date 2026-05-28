@@ -5,7 +5,7 @@ import {
   ScanCommand,
 } from '@aws-sdk/lib-dynamodb';
 import type { APIGatewayProxyEvent } from 'aws-lambda';
-import { handler } from '../../lambda/api/list-posts-handler';
+import { listPosts } from '../../lambda/api/list-posts';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
 
@@ -31,14 +31,14 @@ describe('list-posts handler', () => {
 
   test('returns 500 when the table name is not configured', async () => {
     delete process.env.POSTS_TABLE_NAME;
-    const result = await handler(event());
+    const result = await listPosts(event());
     expect(result).toMatchObject({ statusCode: 500 });
   });
 
   test('scans the table and returns posts newest first', async () => {
     ddbMock.on(ScanCommand).resolves({ Items: samplePosts });
 
-    const result = await handler(event());
+    const result = await listPosts(event());
 
     expect(result).toMatchObject({ statusCode: 200 });
     const body = JSON.parse((result as { body: string }).body);
@@ -51,7 +51,7 @@ describe('list-posts handler', () => {
 
   test('returns an empty list when the table is empty', async () => {
     ddbMock.on(ScanCommand).resolves({});
-    const result = await handler(event());
+    const result = await listPosts(event());
     const body = JSON.parse((result as { body: string }).body);
     expect(body.posts).toEqual([]);
   });
@@ -59,7 +59,7 @@ describe('list-posts handler', () => {
   test('queries the by-status GSI for a valid status', async () => {
     ddbMock.on(QueryCommand).resolves({ Items: [samplePosts[0]] });
 
-    const result = await handler(event('reviewing'));
+    const result = await listPosts(event('reviewing'));
 
     expect(result).toMatchObject({ statusCode: 200 });
     const call = ddbMock.commandCalls(QueryCommand)[0];
@@ -71,7 +71,7 @@ describe('list-posts handler', () => {
   });
 
   test('rejects an unknown status with 400', async () => {
-    const result = await handler(event('not-a-stage'));
+    const result = await listPosts(event('not-a-stage'));
     expect(result).toMatchObject({ statusCode: 400 });
     const body = JSON.parse((result as { body: string }).body);
     expect(body.message).toMatch(/Unknown status/);
@@ -83,14 +83,14 @@ describe('list-posts handler', () => {
       'https://pipeline.blog.sandbox.nakomis.com,http://localhost:5173';
     ddbMock.on(ScanCommand).resolves({ Items: [] });
 
-    const allowed = (await handler(
+    const allowed = (await listPosts(
       event(undefined, 'http://localhost:5173'),
     )) as { headers: Record<string, string> };
     expect(allowed.headers['access-control-allow-origin']).toBe(
       'http://localhost:5173',
     );
 
-    const blocked = (await handler(
+    const blocked = (await listPosts(
       event(undefined, 'https://evil.example.com'),
     )) as { headers: Record<string, string> };
     expect(blocked.headers['access-control-allow-origin']).toBeUndefined();

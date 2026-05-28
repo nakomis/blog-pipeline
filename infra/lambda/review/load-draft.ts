@@ -1,4 +1,5 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
 import {
   DynamoDBDocumentClient,
   GetCommand,
@@ -20,6 +21,32 @@ import { requireEnv } from './runtime';
  * the `exception` outcome.
  */
 const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const lambdaClient = new LambdaClient({});
+
+/**
+ * Kick off image generation, concurrently with the review loop and without
+ * blocking it. Fire-and-forget (`Event` invoke), and deliberately best-effort:
+ * an image-submit problem must never fail the review, so any error here is
+ * swallowed — the post can still be reviewed and published without its
+ * illustrations.
+ */
+async function triggerImageSubmit(slug: string): Promise<void> {
+  const functionName = process.env.IMAGE_SUBMIT_FUNCTION_NAME;
+  if (!functionName) {
+    return;
+  }
+  try {
+    await lambdaClient.send(
+      new InvokeCommand({
+        FunctionName: functionName,
+        InvocationType: 'Event',
+        Payload: Buffer.from(JSON.stringify({ slug })),
+      }),
+    );
+  } catch (err) {
+    console.error(`image-submit invoke failed for '${slug}'`, err);
+  }
+}
 
 export interface LoadDraftInput {
   slug: string;
@@ -59,6 +86,8 @@ export async function handler(event: LoadDraftInput): Promise<LoadDraftOutput> {
       ExpressionAttributeValues: { ':reviewing': 'reviewing', ':now': now },
     }),
   );
+
+  await triggerImageSubmit(slug);
 
   return {
     slug,

@@ -22,6 +22,21 @@ export function requireEnv(name: string): string {
 }
 
 /**
+ * Fetch an SSM parameter's raw string value.
+ *
+ * Throws if the parameter has no value — an empty placeholder left over from the
+ * stack's first deploy, before the operator populated it by hand.
+ */
+export async function readParameterString(name: string): Promise<string> {
+  const res = await ssm.send(new GetParameterCommand({ Name: name }));
+  const value = res.Parameter?.Value;
+  if (!value) {
+    throw new Error(`SSM parameter ${name} has no value`);
+  }
+  return value;
+}
+
+/**
  * Fetch and JSON-parse an SSM parameter.
  *
  * Throws if the parameter has no value (an empty placeholder left over from

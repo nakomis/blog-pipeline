@@ -184,6 +184,32 @@ ever changes.
 If a parameter is left at its placeholder that reviewer simply reports
 `unavailable`; the loop still runs as long as the three-reviewer quorum is met.
 
+### Image generation (PIPE-6)
+
+A post can mark where illustrations belong with `{{image}}` placeholders, e.g.
+`{{image prompt="a black cat asleep on a warm radiator"}}`. At loop entry
+`load-draft` fires the `image-submit` Lambda (fire-and-forget), which queues a
+fal.ai FLUX job per placeholder concurrently with the review. fal calls the
+public `POST /image-callback` route back when each image is ready; the handler
+verifies fal's ED25519 signature, stores the PNG in the drafts bucket, and —
+once the post has left review — rewrites the placeholder into a Markdown image
+reference. Image generation is best-effort: a failure never blocks the review.
+
+The fal API key lives in a single plain `String` parameter, populated by hand
+after the first deploy (same deploy-before-populate pattern as the reviewer
+keys). Unlike the reviewer parameters it is the raw key, not JSON:
+
+```bash
+aws ssm put-parameter \
+  --profile nakom.is-sandbox \
+  --name /blog-pipeline/sandbox/image/fal \
+  --type String --overwrite \
+  --value "$(security find-generic-password -s fal.ai -a api-key -w)"
+```
+
+Left at its placeholder, `image-submit` fails to read the key and submits no
+jobs — the post is still reviewed and published, just without illustrations.
+
 ### Sandbox dry-run
 
 In prod the trigger fires automatically (see [Trigger](#trigger)); in sandbox

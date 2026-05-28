@@ -2,6 +2,7 @@ import * as cdk from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import { ApiStack } from '../lib/api-stack';
 import { EnvConfig } from '../lib/config';
 
@@ -23,6 +24,10 @@ function synth(config: EnvConfig): Template {
   const postsTable = new dynamodb.Table(dataStack, 'PostsTable', {
     partitionKey: { name: 'slug', type: dynamodb.AttributeType.STRING },
   });
+  const imageJobsTable = new dynamodb.Table(dataStack, 'ImageJobsTable', {
+    partitionKey: { name: 'requestId', type: dynamodb.AttributeType.STRING },
+  });
+  const draftsBucket = new s3.Bucket(dataStack, 'DraftsBucket');
   // The real certificate is a cross-region resource from WebCertStack; an
   // imported ARN is enough to synthesise ApiStack.
   const certificate = acm.Certificate.fromCertificateArn(
@@ -35,6 +40,8 @@ function synth(config: EnvConfig): Template {
     env,
     config,
     postsTable,
+    draftsBucket,
+    imageJobsTable,
     certificate,
   });
   return Template.fromStack(apiStack);
@@ -47,12 +54,16 @@ describe('ApiStack', () => {
     template = synth(sandboxConfig);
   });
 
-  test('creates the list-posts Lambda on Node 22 with an explicit name', () => {
+  test('creates the API router Lambda on Node 22 with an explicit name', () => {
     template.hasResourceProperties('AWS::Lambda::Function', {
-      FunctionName: 'blog-pipeline-list-posts-sandbox',
+      FunctionName: 'blog-pipeline-api-sandbox',
       Runtime: 'nodejs22.x',
       Environment: {
-        Variables: Match.objectLike({ POSTS_TABLE_NAME: Match.anyValue() }),
+        Variables: Match.objectLike({
+          POSTS_TABLE_NAME: Match.anyValue(),
+          DRAFTS_BUCKET: Match.anyValue(),
+          IMAGE_JOBS_TABLE_NAME: Match.anyValue(),
+        }),
       },
     });
   });
@@ -68,6 +79,27 @@ describe('ApiStack', () => {
       HttpMethod: 'GET',
       ApiKeyRequired: true,
       AuthorizationType: 'COGNITO_USER_POOLS',
+    });
+  });
+
+  test('the /image-callback POST route is public and key-less (PIPE-6)', () => {
+    // fal can present neither a Cognito token nor the CloudFront API key, and
+    // an authorizer can't see the body to verify the signature — so the route
+    // is open and the Lambda verifies fal's ED25519 signature itself.
+    template.hasResourceProperties('AWS::ApiGateway::Method', {
+      HttpMethod: 'POST',
+      ApiKeyRequired: false,
+      AuthorizationType: 'NONE',
+    });
+  });
+
+  test('CloudFront allows all methods so the POST callback reaches the origin', () => {
+    template.hasResourceProperties('AWS::CloudFront::Distribution', {
+      DistributionConfig: Match.objectLike({
+        DefaultCacheBehavior: Match.objectLike({
+          AllowedMethods: Match.arrayWith(['POST']),
+        }),
+      }),
     });
   });
 
