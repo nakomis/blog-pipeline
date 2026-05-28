@@ -38,11 +38,10 @@ function Notice({ children }: { children: React.ReactNode }) {
 /** The signed-out landing screen. */
 function SignIn({ onSignIn }: { onSignIn: () => void }) {
   return (
-    <main className="app app--centred">
-      <header className="app__header">
-        <h1>Blog Pipeline</h1>
-        <p>Cloud-native review pipeline for blog.nakom.is content.</p>
-      </header>
+    <main className="app signin">
+      <img className="signin__logo" src="/icon.png" alt="Blog Pipeline" />
+      <h1 className="signin__title">Welcome to Blog Pipeline</h1>
+      <p className="signin__subtitle">Sign in below to continue</p>
       <button type="button" className="btn btn--primary" onClick={onSignIn}>
         Sign in
       </button>
@@ -108,7 +107,7 @@ function Dashboard({ auth }: { auth: AuthContextProps }) {
       <header className="app__header">
         <div>
           <h1>Blog Pipeline</h1>
-          <p>Cloud-native review pipeline for blog.nakom.is content.</p>
+          <p>Cloud-native review pipeline for blog.nakomis.com content.</p>
         </div>
         <div className="app__controls">
           <label className="app__filter">

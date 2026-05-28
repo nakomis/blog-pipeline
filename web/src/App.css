@@ -1,7 +1,56 @@
+.layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.layout__content {
+  flex: 1 0 auto;
+}
+
+.footer {
+  flex-shrink: 0;
+  border-top: 1px solid #3e4451;
+  padding: 1rem 1.5rem;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
 .app {
   max-width: 1100px;
   margin: 0 auto;
   padding: 2rem 1.5rem;
+}
+
+/* Signed-out landing — centred column with the project icon, echoing the
+   nakomis app sign-in screens. */
+.signin {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  text-align: center;
+  min-height: 70vh;
+}
+
+.signin__logo {
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  margin-bottom: 0.5rem;
+}
+
+.signin__title {
+  margin: 0;
+  color: var(--heading);
+  font-size: 1.8rem;
+}
+
+.signin__subtitle {
+  margin: 0 0 0.5rem;
+  color: var(--muted);
 }
 
 .app--centred {
