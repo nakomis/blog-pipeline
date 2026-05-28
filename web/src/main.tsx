@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { AuthProvider } from 'react-oidc-context';
 import { BrowserRouter, Route, Routes } from 'react-router';
 import App from './App';
+import Footer from './components/Footer';
 import LoggedIn from './components/LoggedIn';
 import Logout from './components/Logout';
 import PostDetail from './components/PostDetail';
@@ -26,12 +27,17 @@ loadConfig()
       <StrictMode>
         <AuthProvider {...oidcConfig}>
           <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<App />} />
-              <Route path="/post/:slug" element={<PostDetail />} />
-              <Route path="/loggedin" element={<LoggedIn />} />
-              <Route path="/logout" element={<Logout />} />
-            </Routes>
+            <div className="layout">
+              <div className="layout__content">
+                <Routes>
+                  <Route path="/" element={<App />} />
+                  <Route path="/post/:slug" element={<PostDetail />} />
+                  <Route path="/loggedin" element={<LoggedIn />} />
+                  <Route path="/logout" element={<Logout />} />
+                </Routes>
+              </div>
+              <Footer />
+            </div>
           </BrowserRouter>
         </AuthProvider>
       </StrictMode>,
