@@ -56,13 +56,17 @@ describe('deployment tracker constants', () => {
 });
 
 describe('review loop config', () => {
-  test('fans out to four providers', () => {
+  test('fans out to the agreed four-model panel (no bedrock)', () => {
+    // PIPE-3 panel after the 22 May 2026 bake-off: Opus + Gemini + Grok +
+    // GPT-5-pro. Bedrock was deliberately retired but the model id is kept in
+    // `REVIEW.models.bedrock` for possible future re-inclusion.
     expect(REVIEW.providers).toEqual([
-      'bedrock',
       'azure',
       'gemini',
       'anthropic',
+      'grok',
     ]);
+    expect(REVIEW.models.bedrock).toBe('eu.amazon.nova-pro-v1:0');
   });
 
   test('caps the loop and sets the publishability threshold', () => {

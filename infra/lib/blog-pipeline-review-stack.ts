@@ -26,10 +26,10 @@ export interface BlogPipelineReviewStackProps extends cdk.StackProps {
  * not met, or an unexpected exception).
  *
  * Markdown drafts and per-iteration critiques live in a dedicated S3 bucket; the
- * three external reviewer keys live in SSM Parameter Store as plain `String`
- * parameters (cheaper than Secrets Manager — each `String` parameter is free),
- * created with a placeholder value and populated by hand. The state-machine ARN
- * is published to SSM for PIPE-2.
+ * four external reviewer keys (azure, gemini, anthropic, grok) live in SSM
+ * Parameter Store as plain `String` parameters (cheaper than Secrets Manager —
+ * each `String` parameter is free), created with a placeholder value and
+ * populated by hand. The state-machine ARN is published to SSM for PIPE-2.
  */
 export class BlogPipelineReviewStack extends cdk.Stack {
   /** The review-loop state machine — triggered per post by PIPE-2. */
@@ -89,6 +89,12 @@ export class BlogPipelineReviewStack extends cdk.Stack {
         description: 'Anthropic reviewer — JSON {apiKey}',
       },
     );
+    const grokParam = new ssm.StringParameter(this, 'GrokReviewerParam', {
+      parameterName: reviewerParamName('grok'),
+      stringValue: placeholder,
+      description:
+        'Grok on Azure AI Foundry — JSON {apiKey,endpoint,deployment,apiVersion}',
+    });
 
     // ── Lambdas ──────────────────────────────────────────────────────────
     const makeFn = (
@@ -137,12 +143,16 @@ export class BlogPipelineReviewStack extends cdk.Stack {
         AZURE_PARAM_NAME: azureParam.parameterName,
         GEMINI_PARAM_NAME: geminiParam.parameterName,
         ANTHROPIC_PARAM_NAME: anthropicParam.parameterName,
+        GROK_PARAM_NAME: grokParam.parameterName,
       },
     });
     draftsBucket.grantRead(reviewerFn);
     azureParam.grantRead(reviewerFn);
     geminiParam.grantRead(reviewerFn);
     anthropicParam.grantRead(reviewerFn);
+    grokParam.grantRead(reviewerFn);
+    // Bedrock invoke is left on the reviewer role so the bedrock reviewer can
+    // be re-enabled without an IAM change — see `providers/index.ts`.
     reviewerFn.addToRolePolicy(bedrockInvoke);
 
     const gateFn = makeFn('GateFn', 'gate', {
