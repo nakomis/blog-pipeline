@@ -39,6 +39,8 @@ Assess the draft for publishability and return a structured verdict:
 
 Judge the draft on its own terms — a personal reflective post is not weaker for
 being personal. Do not reward padding; concision is a virtue.
+
+Return the verdict as a JSON object matching the required schema.
 `.trim();
 
 /** The user message for a review: the draft to assess. */

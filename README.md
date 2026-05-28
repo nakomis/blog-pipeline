@@ -111,8 +111,8 @@ The review loop (PIPE-3) is an AWS Step Functions state machine,
 1. **LoadDraft** — checks the post item and its iteration-1 draft exist, marks
    the post `reviewing`.
 2. **ReviewFanOut** — a `Map` state fans the draft out to four LLM reviewers in
-   parallel: Azure OpenAI (GPT-5-pro), Google Gemini, Anthropic Claude Opus, and
-   Grok-4 on Azure AI Foundry. Each returns a structured verdict — a
+   parallel: GPT-5 and Grok-4, both on Azure AI Foundry, Google Gemini, and
+   Anthropic Claude Opus. Each returns a structured verdict — a
    publishability score and any blockers — via the Vercel AI SDK with a Zod
    schema. A reviewer that errors is recorded as `unavailable` rather than
    failing the run. (The Bedrock provider code is kept in the repo for possible
@@ -149,17 +149,19 @@ account's Bedrock model access page.
 
 | Parameter | JSON shape |
 |---|---|
-| `/blog-pipeline/{env}/reviewer/azure` | `{"apiKey","resourceName","deployment","apiVersion"}` |
+| `/blog-pipeline/{env}/reviewer/azure` | `{"apiKey","endpoint","deployment","apiVersion"}` |
 | `/blog-pipeline/{env}/reviewer/gemini` | `{"apiKey"}` |
 | `/blog-pipeline/{env}/reviewer/anthropic` | `{"apiKey"}` |
 | `/blog-pipeline/{env}/reviewer/grok` | `{"apiKey","endpoint","deployment","apiVersion"}` |
 
-The `azure` slot is the classic Azure OpenAI URL shape
-(`https://<resourceName>.openai.azure.com/openai/...`). The `grok` slot is the
-Azure AI Foundry `/models/chat/completions` endpoint — `endpoint` is the full
-Foundry hostname (e.g. `https://<instance>.services.ai.azure.com`), `deployment`
-is the Foundry deployment name (e.g. `grok-4.3`), and `apiVersion` is the
-Foundry inference API version (e.g. `2024-05-01-preview`).
+Both `azure` and `grok` target the Azure AI Foundry
+`/models/chat/completions` endpoint and share the same JSON shape: `endpoint`
+is the full Foundry hostname (e.g. `https://<instance>.services.ai.azure.com`),
+`deployment` is the Foundry deployment name (e.g. `gpt-5` or `grok-4.3`), and
+`apiVersion` is the Foundry inference API version (e.g. `2024-05-01-preview`).
+The `azure` GPT model is a reasoning model, so it goes through Foundry's
+OpenAI-compatible surface rather than the classic `…openai.azure.com` one,
+which the AI SDK routes through an unsupported API version for these models.
 
 ```bash
 aws ssm put-parameter \
