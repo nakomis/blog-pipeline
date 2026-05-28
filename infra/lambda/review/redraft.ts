@@ -19,17 +19,21 @@ export interface RedraftInput {
   iteration: number;
   draftKey: string;
   reviews: ReviewResult[];
+  /** Carried through so the relative cap survives each loop (PIPE-4). */
+  baseIteration?: number;
 }
 
 export interface RedraftOutput {
   slug: string;
   iteration: number;
+  baseIteration: number;
   draftKey: string;
   providers: ReviewProvider[];
 }
 
 export async function handler(event: RedraftInput): Promise<RedraftOutput> {
   const { slug, iteration, reviews } = event;
+  const baseIteration = event.baseIteration ?? 1;
 
   const currentDraft = await getDraft(event.draftKey);
 
@@ -46,6 +50,7 @@ export async function handler(event: RedraftInput): Promise<RedraftOutput> {
   return {
     slug,
     iteration: nextIteration,
+    baseIteration,
     draftKey: nextKey,
     providers: [...REVIEW.providers],
   };

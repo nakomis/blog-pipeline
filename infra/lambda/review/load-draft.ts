@@ -50,17 +50,27 @@ async function triggerImageSubmit(slug: string): Promise<void> {
 
 export interface LoadDraftInput {
   slug: string;
+  /**
+   * Iteration to start reviewing from. Defaults to 1 (a fresh post). A human
+   * edit in the bag (PIPE-4) writes a new iteration and can re-review it by
+   * starting the loop here — the iteration cap is then measured relative to
+   * this point (see `gate`).
+   */
+  startIteration?: number;
 }
 
 export interface LoadDraftOutput {
   slug: string;
   iteration: number;
+  /** The iteration this run started from — anchors the relative cap in `gate`. */
+  baseIteration: number;
   draftKey: string;
   providers: ReviewProvider[];
 }
 
 export async function handler(event: LoadDraftInput): Promise<LoadDraftOutput> {
   const { slug } = event;
+  const startIteration = event.startIteration ?? 1;
   const tableName = requireEnv('POSTS_TABLE_NAME');
 
   const { Item } = await docClient.send(
@@ -70,7 +80,7 @@ export async function handler(event: LoadDraftInput): Promise<LoadDraftOutput> {
     throw new Error(`No post item for slug '${slug}'`);
   }
 
-  const key = draftKey(slug, 1);
+  const key = draftKey(slug, startIteration);
   if (!(await draftExists(key))) {
     throw new Error(`No draft object at ${key} for slug '${slug}'`);
   }
@@ -87,11 +97,17 @@ export async function handler(event: LoadDraftInput): Promise<LoadDraftOutput> {
     }),
   );
 
-  await triggerImageSubmit(slug);
+  // Only kick off image generation on a fresh entry. A re-review of an edited
+  // draft (startIteration > 1) already has its images; image-submit is
+  // idempotent anyway, but it reads the iteration-1 draft, so skip it here.
+  if (startIteration === 1) {
+    await triggerImageSubmit(slug);
+  }
 
   return {
     slug,
-    iteration: 1,
+    iteration: startIteration,
+    baseIteration: startIteration,
     draftKey: key,
     providers: [...REVIEW.providers],
   };

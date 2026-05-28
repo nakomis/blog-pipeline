@@ -4,6 +4,7 @@ import type {
 } from 'aws-lambda';
 import { getJob, markJobDone, markJobFailed } from '../images/jobs';
 import { applyPlaceholders, defaultApplyDeps } from '../images/placeholders';
+import { setImageStatus } from '../images/post-images';
 import { downloadImage, putImage } from '../images/store';
 import {
   extractFalHeaders,
@@ -84,18 +85,21 @@ export async function imageCallback(
     // fal failed this image. Mark it; the post still reaches the bag with the
     // images that did succeed (graceful degradation).
     await markJobFailed(requestId);
+    await setImageStatus(job.slug, job.index, 'failed');
     return text(200, 'Job marked failed');
   }
 
   const url = firstImageUrl(body);
   if (!url) {
     await markJobFailed(requestId);
+    await setImageStatus(job.slug, job.index, 'failed');
     return text(200, 'Callback carried no image URL; job marked failed');
   }
 
   const bytes = await downloadImage(url);
   await putImage(job.slug, job.index, bytes);
   await markJobDone(requestId);
+  await setImageStatus(job.slug, job.index, 'ready');
   await applyPlaceholders(job.slug, defaultApplyDeps());
 
   return text(200, 'Image stored');

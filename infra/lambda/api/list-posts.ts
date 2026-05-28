@@ -8,6 +8,7 @@ import type {
   APIGatewayProxyEvent,
   APIGatewayProxyResult,
 } from 'aws-lambda';
+import { corsHeaders, jsonResponse } from './http';
 
 /**
  * The pipeline stages a post can occupy — mirrors `PIPELINE_STAGES` in the web
@@ -17,6 +18,8 @@ const VALID_STATUSES = [
   'queued',
   'reviewing',
   'staged',
+  // A human approved the staged post in the bag (PIPE-4); PIPE-5 publishes it.
+  'approved',
   'published',
   'failed',
 ] as const;
@@ -29,37 +32,6 @@ const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 function isPostStatus(value: string): value is PostStatus {
   return (VALID_STATUSES as readonly string[]).includes(value);
-}
-
-/**
- * CORS headers for the response.
- *
- * The dashboard API sits on a different subdomain from the SPA, so browser
- * requests are cross-origin. The REST API answers the OPTIONS preflight itself;
- * the actual `GET` response needs the header too, so the request `Origin` is
- * echoed back when it is one of the `ALLOWED_ORIGINS` the stack configured.
- */
-function corsHeaders(event: APIGatewayProxyEvent): Record<string, string> {
-  const allowed = (process.env.ALLOWED_ORIGINS ?? '')
-    .split(',')
-    .filter(Boolean);
-  const headers = event.headers ?? {};
-  const origin = headers.Origin ?? headers.origin ?? '';
-  return allowed.includes(origin)
-    ? { 'access-control-allow-origin': origin, vary: 'Origin' }
-    : {};
-}
-
-function jsonResponse(
-  statusCode: number,
-  body: unknown,
-  extraHeaders: Record<string, string>,
-): APIGatewayProxyResult {
-  return {
-    statusCode,
-    headers: { 'content-type': 'application/json', ...extraHeaders },
-    body: JSON.stringify(body),
-  };
 }
 
 /**

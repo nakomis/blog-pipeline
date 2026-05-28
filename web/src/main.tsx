@@ -5,6 +5,7 @@ import { BrowserRouter, Route, Routes } from 'react-router';
 import App from './App';
 import LoggedIn from './components/LoggedIn';
 import Logout from './components/Logout';
+import PostDetail from './components/PostDetail';
 import { loadConfig } from './config/config';
 import './index.css';
 
@@ -27,6 +28,7 @@ loadConfig()
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<App />} />
+              <Route path="/post/:slug" element={<PostDetail />} />
               <Route path="/loggedin" element={<LoggedIn />} />
               <Route path="/logout" element={<Logout />} />
             </Routes>

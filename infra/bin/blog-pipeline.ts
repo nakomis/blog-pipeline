@@ -58,6 +58,7 @@ new ApiStack(app, `BlogPipeline-Api-${config.deployEnv}`, {
   postsTable: dataStack.postsTable,
   draftsBucket: reviewStack.draftsBucket,
   imageJobsTable: dataStack.imageJobsTable,
+  reviewStateMachine: reviewStack.stateMachine,
   certificate: webCertStack.certificate,
   crossRegionReferences: true,
 });
