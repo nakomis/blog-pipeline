@@ -118,6 +118,27 @@ describe('PostDetail — content', () => {
     ).toBeInTheDocument();
   });
 
+  test('rewrites inline image links to the presigned URL', async () => {
+    mockedFetch.mockResolvedValue({
+      ...sampleDetail,
+      finalMarkdown:
+        '# Heading\n\n![a black cat](images/my-post-1.png)\n\n![a ginger cat](images/my-post-2.png)',
+    });
+    mockedUseAuth.mockReturnValue(signedIn());
+    renderDetail();
+    await screen.findByText('My Post');
+
+    // Index 1 is ready → presigned URL; index 2 is pending → unresolved path.
+    expect(screen.getByAltText('a black cat')).toHaveAttribute(
+      'src',
+      'https://img.test/1.png',
+    );
+    expect(screen.getByAltText('a ginger cat')).toHaveAttribute(
+      'src',
+      'images/my-post-2.png',
+    );
+  });
+
   test('surfaces a load error', async () => {
     mockedFetch.mockRejectedValue(new Error('network down'));
     mockedUseAuth.mockReturnValue(signedIn());

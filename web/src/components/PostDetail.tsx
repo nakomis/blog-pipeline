@@ -141,6 +141,21 @@ function PostDetailInner({ idToken }: { idToken: string }) {
 
   const staged = data?.post.status === 'staged';
 
+  // The stored Markdown links generated images by their pipeline-relative path
+  // (`images/{slug}-N.png`), which 404s in the SPA. Swap those for the
+  // presigned URLs the detail bundle provides, matched by image index.
+  const imageUrlByPath = useMemo(() => {
+    const map = new Map<string, string>();
+    if (data) {
+      for (const img of data.images) {
+        if (img.status === 'ready' && img.url) {
+          map.set(`images/${data.post.slug}-${img.index}.png`, img.url);
+        }
+      }
+    }
+    return map;
+  }, [data]);
+
   const save = async (reReview: boolean) => {
     if (!slug) {
       return;
@@ -319,7 +334,16 @@ function PostDetailInner({ idToken }: { idToken: string }) {
               </button>
             </div>
             <div className="markdown">
-              <Markdown remarkPlugins={[remarkGfm]}>
+              <Markdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  img: ({ src, alt, ...props }) => {
+                    const normalised = src?.replace(/^\.\//, '') ?? '';
+                    const resolved = imageUrlByPath.get(normalised) ?? src;
+                    return <img src={resolved} alt={alt} loading="lazy" {...props} />;
+                  },
+                }}
+              >
                 {data.finalMarkdown}
               </Markdown>
             </div>
