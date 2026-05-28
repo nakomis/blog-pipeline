@@ -35,11 +35,31 @@ test('marks the post reviewing and returns the starting state', async () => {
   expect(out).toEqual({
     slug: 'a-post',
     iteration: 1,
+    baseIteration: 1,
     draftKey: 'a-post/iteration-1/draft.md',
     providers: ['azure', 'gemini', 'anthropic', 'grok'],
   });
   const update = ddbMock.commandCalls(UpdateCommand)[0].args[0].input;
   expect(update.ExpressionAttributeValues?.[':reviewing']).toBe('reviewing');
+});
+
+test('starts from a later iteration on re-review, skipping image-submit (PIPE-4)', async () => {
+  process.env.IMAGE_SUBMIT_FUNCTION_NAME = 'image-submit-fn';
+  ddbMock.on(GetCommand).resolves({ Item: { slug: 'a-post', status: 'staged' } });
+  ddbMock.on(UpdateCommand).resolves({});
+  mockDraftExists.mockResolvedValue(true);
+  lambdaMock.on(InvokeCommand).resolves({});
+
+  const out = await handler({ slug: 'a-post', startIteration: 3 });
+
+  expect(out).toMatchObject({
+    slug: 'a-post',
+    iteration: 3,
+    baseIteration: 3,
+    draftKey: 'a-post/iteration-3/draft.md',
+  });
+  // The images were generated on the first pass — a re-review must not re-submit.
+  expect(lambdaMock.commandCalls(InvokeCommand)).toHaveLength(0);
 });
 
 test('fire-and-forgets an image-submit invoke when configured (PIPE-6)', async () => {

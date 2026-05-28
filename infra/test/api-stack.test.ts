@@ -3,6 +3,7 @@ import { Match, Template } from 'aws-cdk-lib/assertions';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import { ApiStack } from '../lib/api-stack';
 import { EnvConfig } from '../lib/config';
 
@@ -28,6 +29,11 @@ function synth(config: EnvConfig): Template {
     partitionKey: { name: 'requestId', type: dynamodb.AttributeType.STRING },
   });
   const draftsBucket = new s3.Bucket(dataStack, 'DraftsBucket');
+  const reviewStateMachine = new sfn.StateMachine(dataStack, 'ReviewLoop', {
+    definitionBody: sfn.DefinitionBody.fromChainable(
+      new sfn.Pass(dataStack, 'Noop'),
+    ),
+  });
   // The real certificate is a cross-region resource from WebCertStack; an
   // imported ARN is enough to synthesise ApiStack.
   const certificate = acm.Certificate.fromCertificateArn(
@@ -42,6 +48,7 @@ function synth(config: EnvConfig): Template {
     postsTable,
     draftsBucket,
     imageJobsTable,
+    reviewStateMachine,
     certificate,
   });
   return Template.fromStack(apiStack);
@@ -79,6 +86,38 @@ describe('ApiStack', () => {
       HttpMethod: 'GET',
       ApiKeyRequired: true,
       AuthorizationType: 'COGNITO_USER_POOLS',
+    });
+  });
+
+  test('the bag routes (detail, edit, decision) are secured (PIPE-4)', () => {
+    // /posts/{slug} GET plus the two POSTs all carry API key + Cognito.
+    const secured = template.findResources('AWS::ApiGateway::Method', {
+      Properties: {
+        ApiKeyRequired: true,
+        AuthorizationType: 'COGNITO_USER_POOLS',
+      },
+    });
+    // GET /posts, GET /posts/{slug}, POST .../edit, POST .../decision.
+    expect(Object.keys(secured).length).toBeGreaterThanOrEqual(4);
+  });
+
+  test('grants the Lambda permission to start the review state machine', () => {
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({ Action: 'states:StartExecution' }),
+        ]),
+      }),
+    });
+  });
+
+  test('passes the review state machine ARN to the Lambda', () => {
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: {
+        Variables: Match.objectLike({
+          REVIEW_STATE_MACHINE_ARN: Match.anyValue(),
+        }),
+      },
     });
   });
 

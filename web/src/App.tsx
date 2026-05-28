@@ -14,6 +14,8 @@ export const PIPELINE_STAGES = [
   { id: 'queued', label: 'Queued' },
   { id: 'reviewing', label: 'In review' },
   { id: 'staged', label: 'In the bag' },
+  // A human approved the staged post (PIPE-4); PIPE-5 publishes it.
+  { id: 'approved', label: 'Approved' },
   { id: 'published', label: 'Published' },
   // A terminal off-ramp: posts the review loop could not pass — capped after
   // four iterations, quorum not met, or an unexpected error (PIPE-3).

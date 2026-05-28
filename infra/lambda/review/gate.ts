@@ -18,6 +18,13 @@ export interface GateInput {
   reviews: ReviewResult[];
   /** 1-based iteration number just reviewed. */
   iteration: number;
+  /**
+   * Iteration this review run started from (PIPE-4 re-review). The cap is
+   * measured relative to it, so a re-review gets a fresh set of iterations
+   * rather than being capped immediately by the post's accumulated count.
+   * Defaults to 1, which reproduces the original absolute-cap behaviour.
+   */
+  baseIteration?: number;
 }
 
 export interface GateOutput {
@@ -42,12 +49,18 @@ export interface GateOutput {
  * 3. **Capped.** Not a pass, but the iteration cap is reached → `fail-capped`.
  * 4. **Loop.** Otherwise → `loop`: redraft and review again.
  */
-export function decideGate({ reviews, iteration }: GateInput): GateOutput {
+export function decideGate({
+  reviews,
+  iteration,
+  baseIteration = 1,
+}: GateInput): GateOutput {
   const ok = reviews.filter(
     (r): r is Extract<ReviewResult, { status: 'ok' }> => r.status === 'ok',
   );
   const okCount = ok.length;
-  const capped = iteration >= REVIEW.maxIterations;
+  // Iterations elapsed in *this* run (1-based): a fresh run with baseIteration 1
+  // on iteration N gives N, reproducing the original absolute cap.
+  const capped = iteration - baseIteration + 1 >= REVIEW.maxIterations;
   const anyBlocker = ok.some((r) => r.blocker);
   const minScore =
     okCount > 0 ? Math.min(...ok.map((r) => r.score)) : null;

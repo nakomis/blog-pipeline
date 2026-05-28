@@ -14,6 +14,7 @@ import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import { Construct } from 'constructs';
 import { EnvConfig } from './config';
 
@@ -28,6 +29,12 @@ export interface ApiStackProps extends cdk.StackProps {
   draftsBucket: s3.IBucket;
   /** The image-jobs table (PIPE-6) — owned by `BlogPipelineStack`. */
   imageJobsTable: dynamodb.ITable;
+  /**
+   * The review loop's state machine — owned by `BlogPipelineReviewStack`. The
+   * bag's edit action (PIPE-4) starts a fresh execution to re-review an edited
+   * draft.
+   */
+  reviewStateMachine: sfn.IStateMachine;
   /**
    * ACM certificate (us-east-1) covering the API domain — from `WebCertStack`,
    * consumed cross-region.
@@ -56,8 +63,14 @@ export interface ApiStackProps extends cdk.StackProps {
 export class ApiStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
-    const { config, postsTable, draftsBucket, imageJobsTable, certificate } =
-      props;
+    const {
+      config,
+      postsTable,
+      draftsBucket,
+      imageJobsTable,
+      reviewStateMachine,
+      certificate,
+    } = props;
     const { deployEnv, domainName, apiDomainName, hostedZoneName, ssmPrefix } =
       config;
 
@@ -125,14 +138,18 @@ export class ApiStack extends cdk.Stack {
         POSTS_TABLE_NAME: postsTable.tableName,
         DRAFTS_BUCKET: draftsBucket.bucketName,
         IMAGE_JOBS_TABLE_NAME: imageJobsTable.tableName,
+        REVIEW_STATE_MACHINE_ARN: reviewStateMachine.stateMachineArn,
         // The API sits on a different subdomain from the SPA, so responses
         // need CORS headers — the handler echoes an allowlisted origin.
         ALLOWED_ORIGINS: allowedOrigins.join(','),
       },
     });
-    postsTable.grantReadData(apiHandler);
+    // The bag (PIPE-4) writes post status, edit metadata and decision
+    // timestamps, so the read path now needs write access too.
+    postsTable.grantReadWriteData(apiHandler);
     draftsBucket.grantReadWrite(apiHandler);
     imageJobsTable.grantReadWriteData(apiHandler);
+    reviewStateMachine.grantStartExecution(apiHandler);
 
     // ── REST API ─────────────────────────────────────────────────────────
     const api = new apigateway.RestApi(this, 'RestApi', {
@@ -141,7 +158,7 @@ export class ApiStack extends cdk.Stack {
       deployOptions: { stageName: 'api' },
       defaultCorsPreflightOptions: {
         allowOrigins: allowedOrigins,
-        allowMethods: ['GET', 'OPTIONS'],
+        allowMethods: ['GET', 'POST', 'OPTIONS'],
         allowHeaders: ['Content-Type', 'Authorization'],
       },
     });
@@ -158,11 +175,24 @@ export class ApiStack extends cdk.Stack {
 
     const apiIntegration = new apigateway.LambdaIntegration(apiHandler);
 
-    api.root.addResource('posts').addMethod('GET', apiIntegration, {
+    // Every dashboard route carries the same protection: a Cognito token and
+    // the CloudFront-injected API key.
+    const securedMethod = {
       apiKeyRequired: true,
       authorizer,
       authorizationType: apigateway.AuthorizationType.COGNITO,
-    });
+    };
+
+    const posts = api.root.addResource('posts');
+    posts.addMethod('GET', apiIntegration, securedMethod);
+
+    // `/posts/{slug}` — the bag's detail bundle and write actions (PIPE-4).
+    const post = posts.addResource('{slug}');
+    post.addMethod('GET', apiIntegration, securedMethod);
+    post.addResource('edit').addMethod('POST', apiIntegration, securedMethod);
+    post
+      .addResource('decision')
+      .addMethod('POST', apiIntegration, securedMethod);
 
     // fal.ai's image webhook (PIPE-6). Public and key-less: fal cannot present
     // a Cognito token or the CloudFront-injected API key, and an API Gateway
