@@ -201,9 +201,13 @@ describe('ApiStack', () => {
     });
   });
 
-  test('gives the app client managed-login branding so the hosted UI renders', () => {
+  test('applies dark managed-login branding tied to the app client', () => {
     template.hasResourceProperties('AWS::Cognito::ManagedLoginBranding', {
-      UseCognitoProvidedValues: true,
+      UseCognitoProvidedValues: false,
+      ClientId: { Ref: Match.anyValue() },
+      Settings: Match.objectLike({
+        categories: { global: Match.objectLike({ colorSchemeMode: 'DARK' }) },
+      }),
     });
   });
 
