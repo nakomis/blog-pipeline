@@ -9,7 +9,7 @@ import type { ReviewResult } from './schema';
 
 export const REVIEW_SYSTEM_PROMPT = `
 You are a sharp, fair editorial reviewer for a technical and personal blog
-(blog.nakom.is) written by a software engineer. The blog mixes hands-on
+(blog.nakomis.com) written by a software engineer. The blog mixes hands-on
 engineering write-ups with reflective personal posts.
 
 The draft you are reviewing may contain template placeholders that are
@@ -49,7 +49,7 @@ export function buildReviewPrompt(draft: string): string {
 }
 
 export const REDRAFT_SYSTEM_PROMPT = `
-You are redrafting a blog post for blog.nakom.is to address reviewer critique.
+You are redrafting a blog post for blog.nakomis.com to address reviewer critique.
 
 Rules:
 - Preserve the author's voice, intent, argument and structure. You are editing,
