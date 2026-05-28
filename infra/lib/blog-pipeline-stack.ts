@@ -18,6 +18,9 @@ export class BlogPipelineStack extends cdk.Stack {
   /** One item per blog post, keyed by slug. */
   public readonly postsTable: dynamodb.Table;
 
+  /** One row per fal.ai image job (PIPE-6), keyed by fal `requestId`. */
+  public readonly imageJobsTable: dynamodb.Table;
+
   constructor(scope: Construct, id: string, props: BlogPipelineStackProps) {
     super(scope, id, props);
     const { config } = props;
@@ -43,9 +46,27 @@ export class BlogPipelineStack extends cdk.Stack {
       sortKey: { name: 'updatedAt', type: dynamodb.AttributeType.STRING },
     });
 
+    // Image jobs (PIPE-6). One row per fal.ai generation, keyed by the
+    // `requestId` fal returns — the webhook callback carries only that id, so
+    // this row maps it back to the post and placeholder. Rows are transient: a
+    // TTL on `expiresAt` reaps them a week after creation.
+    this.imageJobsTable = new dynamodb.Table(this, 'ImageJobsTable', {
+      tableName: `blog-pipeline-image-jobs-${config.deployEnv}`,
+      partitionKey: { name: 'requestId', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      timeToLiveAttribute: 'expiresAt',
+      removalPolicy: isProd
+        ? cdk.RemovalPolicy.RETAIN
+        : cdk.RemovalPolicy.DESTROY,
+    });
+
     new cdk.CfnOutput(this, 'PostsTableName', {
       value: this.postsTable.tableName,
       description: 'DynamoDB table holding one item per blog post',
+    });
+    new cdk.CfnOutput(this, 'ImageJobsTableName', {
+      value: this.imageJobsTable.tableName,
+      description: 'DynamoDB table holding one row per fal.ai image job',
     });
   }
 }

@@ -127,6 +127,23 @@ export const REVIEW = {
   redraftModel: 'eu.anthropic.claude-sonnet-4-6',
 } as const;
 
+/**
+ * Image generation (PIPE-6).
+ *
+ * `{{image}}` placeholders in a draft are illustrated by fal.ai's FLUX model,
+ * generated concurrently with the review loop. Like `REVIEW`, the model id and
+ * dimensions are stable product constants (identical in sandbox and prod), so
+ * they live here rather than in SSM. The fal API key is the one account-specific
+ * value and lives in the `${ssmPrefix}/image/fal` parameter.
+ */
+export const IMAGE = {
+  /** fal.ai model slug, used to build the queue submit URL. */
+  model: 'fal-ai/flux-2-pro',
+  /** Output dimensions — 3:2 landscape, matching the blog's hero images. */
+  width: 1216,
+  height: 832,
+} as const;
+
 /** A reviewer provider id — one of `REVIEW.providers`. */
 export type ReviewProvider = (typeof REVIEW.providers)[number];
 

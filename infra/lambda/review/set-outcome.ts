@@ -3,6 +3,7 @@ import {
   DynamoDBDocumentClient,
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
+import { applyPlaceholders, defaultApplyDeps } from '../images/placeholders';
 import { requireEnv } from './runtime';
 import type { ReviewOutcome } from './schema';
 
@@ -55,6 +56,16 @@ export async function handler(
       ExpressionAttributeValues: values,
     }),
   );
+
+  // The post has just left review, so it is now safe to rewrite any `{{image}}`
+  // placeholders whose images have arrived. This is the natural "leaving review"
+  // hook; the callback handles any images that land later. Best-effort — the
+  // outcome is already recorded, so an image hiccup must not fail this step.
+  try {
+    await applyPlaceholders(slug, defaultApplyDeps());
+  } catch (err) {
+    console.error(`applyPlaceholders failed for '${slug}'`, err);
+  }
 
   return { slug, status, reviewOutcome };
 }

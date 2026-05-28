@@ -15,6 +15,8 @@ export interface BlogPipelineReviewStackProps extends cdk.StackProps {
   config: EnvConfig;
   /** The posts table — owned by `BlogPipelineStack`, read and written here. */
   postsTable: dynamodb.ITable;
+  /** The image-jobs table (PIPE-6) — owned by `BlogPipelineStack`. */
+  imageJobsTable: dynamodb.ITable;
 }
 
 /**
@@ -35,14 +37,17 @@ export class BlogPipelineReviewStack extends cdk.Stack {
   /** The review-loop state machine — triggered per post by PIPE-2. */
   public readonly stateMachine: sfn.StateMachine;
 
+  /** Drafts + generated images bucket — consumed by the API stack (PIPE-6). */
+  public readonly draftsBucket: s3.Bucket;
+
   constructor(
     scope: Construct,
     id: string,
     props: BlogPipelineReviewStackProps,
   ) {
     super(scope, id, props);
-    const { config, postsTable } = props;
-    const { deployEnv, ssmPrefix } = config;
+    const { config, postsTable, imageJobsTable } = props;
+    const { deployEnv, ssmPrefix, apiDomainName } = config;
     const isProd = deployEnv === 'prod';
 
     // ── Drafts bucket ────────────────────────────────────────────────────
@@ -56,6 +61,7 @@ export class BlogPipelineReviewStack extends cdk.Stack {
         : cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: !isProd,
     });
+    this.draftsBucket = draftsBucket;
 
     // ── Reviewer parameters ──────────────────────────────────────────────
     // Plain `String` SSM parameters (not Secrets Manager — far cheaper at this
@@ -94,6 +100,17 @@ export class BlogPipelineReviewStack extends cdk.Stack {
       stringValue: placeholder,
       description:
         'Grok on Azure AI Foundry — JSON {apiKey,endpoint,deployment,apiVersion}',
+    });
+
+    // ── Image generation parameter (PIPE-6) ──────────────────────────────
+    // The fal.ai API key — a plain string (not JSON), populated by hand after
+    // the first deploy (deploy-before-populate, as with the reviewer keys):
+    //   aws ssm put-parameter --overwrite --name <name> --type String \
+    //     --value "$(security find-generic-password -s fal.ai -a api-key -w)"
+    const falParam = new ssm.StringParameter(this, 'FalImageParam', {
+      parameterName: `${ssmPrefix}/image/fal`,
+      stringValue: placeholder,
+      description: 'fal.ai API key for FLUX image generation — plain key string',
     });
 
     // ── Lambdas ──────────────────────────────────────────────────────────
@@ -177,9 +194,43 @@ export class BlogPipelineReviewStack extends cdk.Stack {
     redraftFn.addToRolePolicy(bedrockInvoke);
 
     const setOutcomeFn = makeFn('SetOutcomeFn', 'set-outcome', {
-      environment: { POSTS_TABLE_NAME: postsTable.tableName },
+      environment: {
+        POSTS_TABLE_NAME: postsTable.tableName,
+        // Leaving review is the natural moment to rewrite `{{image}}`
+        // placeholders for images that have arrived (PIPE-6) — set-outcome
+        // calls applyPlaceholders inline, so it reads the post and reads/writes
+        // the draft.
+        DRAFTS_BUCKET: draftsBucket.bucketName,
+      },
     });
-    postsTable.grantWriteData(setOutcomeFn);
+    postsTable.grantReadWriteData(setOutcomeFn);
+    draftsBucket.grantReadWrite(setOutcomeFn);
+
+    // ── Image submission (PIPE-6) ────────────────────────────────────────
+    // Async-invoked by load-draft at loop entry; fans `{{image}}` placeholders
+    // out to fal.ai concurrently with the review. fal calls the API stack's
+    // `/image-callback` route back when each image is ready.
+    const imageSubmitFn = makeFn('ImageSubmitFn', 'image-submit', {
+      environment: {
+        POSTS_TABLE_NAME: postsTable.tableName,
+        DRAFTS_BUCKET: draftsBucket.bucketName,
+        IMAGE_JOBS_TABLE_NAME: imageJobsTable.tableName,
+        FAL_PARAM_NAME: falParam.parameterName,
+        IMAGE_CALLBACK_URL: `https://${apiDomainName}/image-callback`,
+      },
+    });
+    falParam.grantRead(imageSubmitFn);
+    draftsBucket.grantRead(imageSubmitFn);
+    postsTable.grantReadWriteData(imageSubmitFn);
+    imageJobsTable.grantWriteData(imageSubmitFn);
+
+    // load-draft fires image-submit (fire-and-forget) once it marks the post
+    // `reviewing` — see `triggerImageSubmit`.
+    loadDraftFn.addEnvironment(
+      'IMAGE_SUBMIT_FUNCTION_NAME',
+      imageSubmitFn.functionName,
+    );
+    imageSubmitFn.grantInvoke(loadDraftFn);
 
     // ── State machine ────────────────────────────────────────────────────
     const reviewComplete = new sfn.Succeed(this, 'ReviewComplete');

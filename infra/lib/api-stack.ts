@@ -12,6 +12,7 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import { EnvConfig } from './config';
@@ -20,6 +21,13 @@ export interface ApiStackProps extends cdk.StackProps {
   config: EnvConfig;
   /** The posts table — owned by `BlogPipelineStack`, read by the API Lambda. */
   postsTable: dynamodb.ITable;
+  /**
+   * The drafts + images bucket — owned by `BlogPipelineReviewStack`. The image
+   * callback (PIPE-6) writes generated PNGs and rewrites draft placeholders.
+   */
+  draftsBucket: s3.IBucket;
+  /** The image-jobs table (PIPE-6) — owned by `BlogPipelineStack`. */
+  imageJobsTable: dynamodb.ITable;
   /**
    * ACM certificate (us-east-1) covering the API domain — from `WebCertStack`,
    * consumed cross-region.
@@ -48,7 +56,8 @@ export interface ApiStackProps extends cdk.StackProps {
 export class ApiStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
-    const { config, postsTable, certificate } = props;
+    const { config, postsTable, draftsBucket, imageJobsTable, certificate } =
+      props;
     const { deployEnv, domainName, apiDomainName, hostedZoneName, ssmPrefix } =
       config;
 
@@ -100,22 +109,30 @@ export class ApiStack extends cdk.Stack {
       useCognitoProvidedValues: true,
     });
 
-    // ── list-posts Lambda ────────────────────────────────────────────────
-    const listPostsHandler = new nodejs.NodejsFunction(this, 'ListPostsHandler', {
-      functionName: `blog-pipeline-list-posts-${deployEnv}`,
-      entry: path.join(__dirname, '../lambda/api/list-posts-handler.ts'),
+    // ── API Lambda (router) ──────────────────────────────────────────────
+    // One function fronts two routes: `GET /posts` (the dashboard read path)
+    // and `POST /image-callback` (fal.ai's image webhook, PIPE-6). The callback
+    // verifies fal's signature in-handler, downloads the image to the drafts
+    // bucket, and rewrites the post's `{{image}}` placeholder.
+    const apiHandler = new nodejs.NodejsFunction(this, 'ApiHandler', {
+      functionName: `blog-pipeline-api-${deployEnv}`,
+      entry: path.join(__dirname, '../lambda/api/handler.ts'),
       handler: 'handler',
       runtime: lambda.Runtime.NODEJS_22_X,
       memorySize: 256,
-      timeout: cdk.Duration.seconds(10),
+      timeout: cdk.Duration.seconds(30),
       environment: {
         POSTS_TABLE_NAME: postsTable.tableName,
+        DRAFTS_BUCKET: draftsBucket.bucketName,
+        IMAGE_JOBS_TABLE_NAME: imageJobsTable.tableName,
         // The API sits on a different subdomain from the SPA, so responses
         // need CORS headers — the handler echoes an allowlisted origin.
         ALLOWED_ORIGINS: allowedOrigins.join(','),
       },
     });
-    postsTable.grantReadData(listPostsHandler);
+    postsTable.grantReadData(apiHandler);
+    draftsBucket.grantReadWrite(apiHandler);
+    imageJobsTable.grantReadWriteData(apiHandler);
 
     // ── REST API ─────────────────────────────────────────────────────────
     const api = new apigateway.RestApi(this, 'RestApi', {
@@ -139,15 +156,25 @@ export class ApiStack extends cdk.Stack {
       },
     );
 
-    api.root.addResource('posts').addMethod(
-      'GET',
-      new apigateway.LambdaIntegration(listPostsHandler),
-      {
-        apiKeyRequired: true,
-        authorizer,
-        authorizationType: apigateway.AuthorizationType.COGNITO,
-      },
-    );
+    const apiIntegration = new apigateway.LambdaIntegration(apiHandler);
+
+    api.root.addResource('posts').addMethod('GET', apiIntegration, {
+      apiKeyRequired: true,
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+    });
+
+    // fal.ai's image webhook (PIPE-6). Public and key-less: fal cannot present
+    // a Cognito token or the CloudFront-injected API key, and an API Gateway
+    // authorizer can't see the body to verify fal's signature — so the route is
+    // open and the Lambda verifies the ED25519 signature itself before trusting
+    // anything.
+    api.root
+      .addResource('image-callback')
+      .addMethod('POST', apiIntegration, {
+        apiKeyRequired: false,
+        authorizationType: apigateway.AuthorizationType.NONE,
+      });
 
     // ── API key — generated at deploy time, never persisted ──────────────
     // `secretsmanager:GetRandomPassword` is a free API call that creates no
@@ -200,7 +227,9 @@ export class ApiStack extends cdk.Stack {
         // then follow the redirect silently, so the leak goes unnoticed. An
         // API must reject HTTP outright, not usher it towards HTTPS.
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.HTTPS_ONLY,
-        allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
+        // ALLOW_ALL so the `POST /image-callback` webhook (PIPE-6) reaches the
+        // origin — the GET read path is unaffected.
+        allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
         cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
         // Forward every viewer header (notably `Authorization`) except `Host`,
         // which API Gateway must set itself.

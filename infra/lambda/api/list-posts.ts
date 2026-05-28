@@ -69,7 +69,7 @@ function jsonResponse(
  * - `GET /posts?status=reviewing` — posts in one stage, served cheaply from the
  *   `by-status` GSI. An unrecognised status is a `400`.
  */
-export async function handler(
+export async function listPosts(
   event: APIGatewayProxyEvent,
 ): Promise<APIGatewayProxyResult> {
   const cors = corsHeaders(event);

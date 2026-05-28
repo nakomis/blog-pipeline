@@ -29,7 +29,12 @@ function synth(config: EnvConfig): Template {
   const review = new BlogPipelineReviewStack(
     app,
     `BlogPipeline-Review-${config.deployEnv}`,
-    { env, config, postsTable: data.postsTable },
+    {
+      env,
+      config,
+      postsTable: data.postsTable,
+      imageJobsTable: data.imageJobsTable,
+    },
   );
   const stack = new BlogPipelineTriggerStack(
     app,

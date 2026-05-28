@@ -52,6 +52,14 @@ describe('BlogPipelineStack', () => {
     synth(sandboxConfig).hasOutput('PostsTableName', {});
   });
 
+  test('creates the image-jobs table with a TTL on expiresAt (PIPE-6)', () => {
+    synth(sandboxConfig).hasResourceProperties('AWS::DynamoDB::Table', {
+      TableName: 'blog-pipeline-image-jobs-sandbox',
+      BillingMode: 'PAY_PER_REQUEST',
+      TimeToLiveSpecification: { AttributeName: 'expiresAt', Enabled: true },
+    });
+  });
+
   test('sandbox table is destroyed on stack deletion', () => {
     synth(sandboxConfig).hasResource('AWS::DynamoDB::Table', {
       DeletionPolicy: 'Delete',
