@@ -25,9 +25,9 @@ describe('reviewerModel registry', () => {
         Parameter: {
           Value: JSON.stringify({
             apiKey: 'k',
-            resourceName: 'my-resource',
-            deployment: 'gpt-5-pro',
-            apiVersion: '2024-10-01',
+            endpoint: 'https://nakomis-foundry.services.ai.azure.com',
+            deployment: 'gpt-5',
+            apiVersion: '2024-05-01-preview',
           }),
         },
       });
