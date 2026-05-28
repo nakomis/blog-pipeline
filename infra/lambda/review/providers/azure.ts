@@ -34,6 +34,10 @@ export async function reviewerModel(): Promise<LanguageModel> {
     baseURL,
     headers: { 'api-key': secret.apiKey },
     queryParams: { 'api-version': secret.apiVersion },
+    // gpt-5 is a reasoning model; in plain json_object mode it intermittently
+    // returns a verdict that fails our Zod schema. Structured outputs constrain
+    // it to the exact schema (`response_format: json_schema`, strict).
+    supportsStructuredOutputs: true,
   });
   return provider(secret.deployment);
 }
