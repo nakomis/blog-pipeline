@@ -115,17 +115,67 @@ describe('BlogPipelineTriggerStack', () => {
     });
   });
 
-  test('publishes four SSM discovery parameters', () => {
+  test('publishes five SSM discovery parameters', () => {
     const template = synth(sandboxConfig);
-    template.resourceCountIs('AWS::SSM::Parameter', 4);
+    template.resourceCountIs('AWS::SSM::Parameter', 5);
     for (const name of [
       '/blog-pipeline/sandbox/trigger/role-arn',
       '/blog-pipeline/sandbox/trigger/drafts-bucket',
       '/blog-pipeline/sandbox/trigger/posts-table',
       '/blog-pipeline/sandbox/trigger/state-machine-arn',
+      '/blog-pipeline/sandbox/promote/role-arn',
     ]) {
       template.hasResourceProperties('AWS::SSM::Parameter', { Name: name });
     }
+  });
+
+  test('creates the promote role pinned to blog-content main', () => {
+    synth(sandboxConfig).hasResourceProperties('AWS::IAM::Role', {
+      RoleName: 'blog-pipeline-promote-sandbox',
+      AssumeRolePolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: 'sts:AssumeRoleWithWebIdentity',
+            Condition: {
+              StringEquals: {
+                'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
+                'token.actions.githubusercontent.com:sub':
+                  'repo:nakomis/blog-content:ref:refs/heads/main',
+              },
+            },
+          }),
+        ]),
+      },
+    });
+  });
+
+  test('promote role reads the drafts bucket and marks posts, but cannot start an execution', () => {
+    const template = synth(sandboxConfig);
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Sid: 'ReadDraftsAndImages',
+            Action: 's3:GetObject',
+            Resource: 'arn:aws:s3:::blog-pipeline-drafts-sandbox/*',
+          }),
+          Match.objectLike({
+            Sid: 'FindAndMarkApproved',
+            Action: [
+              'dynamodb:Query',
+              'dynamodb:GetItem',
+              'dynamodb:UpdateItem',
+            ],
+          }),
+        ]),
+      }),
+    });
+    // Promotion pulls finished work out; it must never re-enter the loop.
+    const policies = template.findResources('AWS::IAM::Policy');
+    const promotePolicy = Object.values(policies).find((p) =>
+      JSON.stringify(p).includes('FindAndMarkApproved'),
+    );
+    expect(JSON.stringify(promotePolicy)).not.toContain('states:StartExecution');
   });
 
   test('prod synth produces the same shape with prod-prefixed names', () => {
