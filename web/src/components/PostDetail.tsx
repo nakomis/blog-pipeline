@@ -10,6 +10,7 @@ import {
   fetchPostDetail,
   type PostDetail as PostDetailData,
 } from '../api/post-detail';
+import { displayStage } from '../api/posts';
 import './PostDetail.css';
 
 type Tab = 'article' | 'diff' | 'reviews' | 'images';
@@ -250,8 +251,12 @@ function PostDetailInner({ idToken }: { idToken: string }) {
           <h1>{data.post.title}</h1>
           <p className="detail__meta">
             <span>{data.post.slug}</span>
-            <span className={`badge badge--status badge--${data.post.status}`}>
-              {data.post.status}
+            <span
+              className={`badge badge--status badge--${displayStage(data.post)}`}
+            >
+              {displayStage(data.post) === 'scheduled'
+                ? `queued · publishes ${data.post.publishDate}`
+                : data.post.status}
             </span>
           </p>
         </div>

@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import type { Post } from '../api/posts';
+import { displayStage, type Post } from '../api/posts';
 
 const DAY_MS = 86_400_000;
 
@@ -31,6 +31,9 @@ export default function PostCard({ post }: { post: Post }) {
   return (
     <Link className="post-card" to={`/post/${post.slug}`}>
       <h3 className="post-card__title">{post.title}</h3>
+      {displayStage(post) === 'scheduled' && (
+        <p className="post-card__publish-date">Publishes {post.publishDate}</p>
+      )}
       {post.summary && <p className="post-card__summary">{post.summary}</p>}
       <div className="post-card__meta">
         <span className="post-card__slug">{post.slug}</span>

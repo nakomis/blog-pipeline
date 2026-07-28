@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth, type AuthContextProps } from 'react-oidc-context';
-import { fetchPosts, type Post } from './api/posts';
+import { displayStage, fetchPosts, type Post } from './api/posts';
 import { publishNow } from './api/post-detail';
 import PostCard from './components/PostCard';
 import { getConfig } from './config/config';
@@ -12,11 +12,14 @@ import './App.css';
  * `status` attribute in DynamoDB.
  */
 export const PIPELINE_STAGES = [
-  { id: 'queued', label: 'Queued' },
+  { id: 'queued', label: 'Awaiting review' },
   { id: 'reviewing', label: 'In review' },
   { id: 'staged', label: 'In the bag' },
   // A human approved the staged post (PIPE-4); PIPE-5 publishes it.
   { id: 'approved', label: 'Approved' },
+  // Derived, not a DynamoDB status: `published` rows whose publish date is
+  // still in the future — promoted and scheduled, but not yet live (PIPE-17).
+  { id: 'scheduled', label: 'Queued' },
   { id: 'published', label: 'Published' },
   // A terminal off-ramp: posts the review loop could not pass — capped after
   // four iterations, quorum not met, or an unexpected error (PIPE-3).
@@ -87,7 +90,7 @@ function Dashboard({ auth }: { auth: AuthContextProps }) {
       PIPELINE_STAGES.map((stage) => [stage.id, []]),
     );
     for (const post of posts ?? []) {
-      byStage.get(post.status)?.push(post);
+      byStage.get(displayStage(post))?.push(post);
     }
     return byStage;
   }, [posts]);

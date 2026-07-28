@@ -6,7 +6,11 @@ import App, { PIPELINE_STAGES } from './App';
 import { fetchPosts, type Post } from './api/posts';
 
 vi.mock('react-oidc-context');
-vi.mock('./api/posts');
+// Mock only the fetch — `displayStage` is real logic the grouping tests rely on.
+vi.mock('./api/posts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./api/posts')>()),
+  fetchPosts: vi.fn(),
+}));
 vi.mock('./config/config', () => ({
   getConfig: () => ({
     env: 'test',
@@ -96,6 +100,29 @@ describe('App — authentication gate', () => {
 });
 
 describe('App — dashboard', () => {
+  test('a promoted post with a future date sits in Queued with its date shown', async () => {
+    mockedFetchPosts.mockResolvedValue([
+      {
+        slug: 'p3',
+        status: 'published',
+        title: 'Scheduled Post',
+        updatedAt: '2026-05-03T00:00:00Z',
+        publishDate: '2999-01-01',
+      },
+    ]);
+    mockedUseAuth.mockReturnValue(signedIn());
+    renderApp();
+
+    const card = await screen.findByText('Scheduled Post');
+    expect(card).toBeInTheDocument();
+    expect(screen.getByText('Publishes 2999-01-01')).toBeInTheDocument();
+    // It presents in the derived Queued column, not Published.
+    const queuedColumn = screen
+      .getByRole('heading', { level: 2, name: /^Queued/ })
+      .closest('section');
+    expect(queuedColumn).toContainElement(card);
+  });
+
   test('fetches posts with the ID token and renders every stage column', async () => {
     mockedFetchPosts.mockResolvedValue(samplePosts);
     mockedUseAuth.mockReturnValue(signedIn());
