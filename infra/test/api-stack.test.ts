@@ -157,10 +157,31 @@ describe('ApiStack', () => {
   });
 
   test('generates the API key value without a Secrets Manager secret', () => {
-    // The key value comes from a GetRandomPassword custom resource — no
-    // AWS::SecretsManager::Secret is created, so there is no monthly cost.
-    template.resourceCountIs('AWS::SecretsManager::Secret', 0);
+    // The key value comes from a GetRandomPassword custom resource, not a
+    // stored secret. The only AWS::SecretsManager::Secret in the stack is the
+    // GitHub dispatch PAT (PIPE-14) — the API key itself is never persisted.
     template.resourceCountIs('Custom::AWS', 1);
+    const secrets = template.findResources('AWS::SecretsManager::Secret');
+    const secretNames = Object.values(secrets).map(
+      (s) => s.Properties?.Name as string,
+    );
+    expect(secretNames).toEqual([
+      expect.stringContaining('blog-pipeline-github-dispatch-'),
+    ]);
+  });
+
+  test('creates the GitHub dispatch secret and passes its ARN to the Lambda (PIPE-14)', () => {
+    template.hasResourceProperties('AWS::SecretsManager::Secret', {
+      Name: Match.stringLikeRegexp('blog-pipeline-github-dispatch-.*'),
+    });
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: Match.stringLikeRegexp('blog-pipeline-api-.*'),
+      Environment: {
+        Variables: Match.objectLike({
+          GITHUB_DISPATCH_SECRET_ARN: Match.anyValue(),
+        }),
+      },
+    });
   });
 
   test('fronts the API with CloudFront on the API domain, injecting x-api-key', () => {

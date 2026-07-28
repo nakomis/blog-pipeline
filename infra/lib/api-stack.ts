@@ -13,6 +13,7 @@ import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import { Construct } from 'constructs';
@@ -245,6 +246,27 @@ export class ApiStack extends cdk.Stack {
     imageJobsTable.grantReadWriteData(apiHandler);
     reviewStateMachine.grantStartExecution(apiHandler);
 
+    // `POST /publish-now` (PIPE-14) dispatches the `promote-approved` workflow on
+    // blog-content on demand. The GitHub fine-grained PAT (Actions:write on
+    // blog-content) is provisioned out-of-band — CDK creates the empty secret,
+    // the value is set once by hand and never lands in this repo.
+    const githubDispatchSecret = new secretsmanager.Secret(
+      this,
+      'GithubDispatchSecret',
+      {
+        secretName: `blog-pipeline-github-dispatch-${deployEnv}`,
+        description:
+          'GitHub fine-grained PAT (Actions:write on blog-content) used by ' +
+          'POST /publish-now to dispatch the promote-approved workflow. ' +
+          'Value provisioned out-of-band.',
+      },
+    );
+    githubDispatchSecret.grantRead(apiHandler);
+    apiHandler.addEnvironment(
+      'GITHUB_DISPATCH_SECRET_ARN',
+      githubDispatchSecret.secretArn,
+    );
+
     // ── REST API ─────────────────────────────────────────────────────────
     const api = new apigateway.RestApi(this, 'RestApi', {
       restApiName: `blog-pipeline-api-${deployEnv}`,
@@ -286,6 +308,12 @@ export class ApiStack extends cdk.Stack {
     post.addResource('edit').addMethod('POST', apiIntegration, securedMethod);
     post
       .addResource('decision')
+      .addMethod('POST', apiIntegration, securedMethod);
+
+    // `/publish-now` — promote approved, due posts on demand (PIPE-14) rather
+    // than waiting for the 04:00 UTC cron. Same protection as the other actions.
+    api.root
+      .addResource('publish-now')
       .addMethod('POST', apiIntegration, securedMethod);
 
     // fal.ai's image webhook (PIPE-6). Public and key-less: fal cannot present
