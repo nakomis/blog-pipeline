@@ -17,6 +17,28 @@ export interface Post {
   reviewIteration?: number;
   /** Latest minimum publishability score (0–100), if reviewed. */
   publishabilityScore?: number;
+  /** The blog go-live date (YYYY-MM-DD), stamped when the post is promoted. */
+  publishDate?: string;
+}
+
+/**
+ * The dashboard stage a post presents in. `published` rows whose publish date
+ * has not yet arrived show as the derived `scheduled` stage ("Queued" column)
+ * — promoted to blog-content, but the blog's date gate holds them back
+ * (PIPE-17).
+ */
+export function displayStage(
+  post: Pick<Post, 'status' | 'publishDate'>,
+  today: string = new Date().toISOString().slice(0, 10),
+): PipelineStageId {
+  if (
+    post.status === 'published' &&
+    post.publishDate !== undefined &&
+    post.publishDate > today
+  ) {
+    return 'scheduled';
+  }
+  return post.status;
 }
 
 /**

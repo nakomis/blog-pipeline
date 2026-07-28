@@ -206,6 +206,13 @@
   font-size: 0.95rem;
 }
 
+.post-card__publish-date {
+  margin: 0 0 0.5rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
 .post-card__summary {
   margin: 0 0 0.5rem;
   font-size: 0.82rem;
