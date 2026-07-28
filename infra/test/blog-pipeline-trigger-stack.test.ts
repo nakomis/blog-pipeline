@@ -115,18 +115,33 @@ describe('BlogPipelineTriggerStack', () => {
     });
   });
 
-  test('publishes five SSM discovery parameters', () => {
+  test('publishes six SSM discovery parameters', () => {
     const template = synth(sandboxConfig);
-    template.resourceCountIs('AWS::SSM::Parameter', 5);
+    template.resourceCountIs('AWS::SSM::Parameter', 6);
     for (const name of [
       '/blog-pipeline/sandbox/trigger/role-arn',
       '/blog-pipeline/sandbox/trigger/drafts-bucket',
       '/blog-pipeline/sandbox/trigger/posts-table',
       '/blog-pipeline/sandbox/trigger/state-machine-arn',
       '/blog-pipeline/sandbox/promote/role-arn',
+      '/blog-pipeline/sandbox/alerts/topic-arn',
     ]) {
       template.hasResourceProperties('AWS::SSM::Parameter', { Name: name });
     }
+  });
+
+  test('creates the alerts topic with an email subscription only in prod', () => {
+    const sandbox = synth(sandboxConfig);
+    sandbox.hasResourceProperties('AWS::SNS::Topic', {
+      TopicName: 'blog-pipeline-alerts-sandbox',
+    });
+    sandbox.resourceCountIs('AWS::SNS::Subscription', 0);
+
+    const prod = synth(prodConfig);
+    prod.hasResourceProperties('AWS::SNS::Subscription', {
+      Protocol: 'email',
+      Endpoint: 'martin@nakomis.com',
+    });
   });
 
   test('creates the promote role pinned to blog-content main', () => {

@@ -2,6 +2,8 @@ import * as cdk from 'aws-cdk-lib';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
+import * as sns from 'aws-cdk-lib/aws-sns';
+import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import { BLOG_CONTENT_REPO, EnvConfig } from './config';
@@ -160,6 +162,26 @@ export class BlogPipelineTriggerStack extends cdk.Stack {
 
     this.promoteRole = promoteRole;
 
+    // ── Failure alerting (PIPE-15) ───────────────────────────────────────
+    // The publish chain is cron-driven and has no human watching it; a broken
+    // dispatch token or a failing promote run must reach an inbox, not rot in
+    // the Actions tab. Workflows publish here from `if: failure()` steps.
+    // Email subscription is prod-only — sandbox has no scheduled workflows.
+    const alertsTopic = new sns.Topic(this, 'AlertsTopic', {
+      topicName: `blog-pipeline-alerts-${deployEnv}`,
+      displayName: `Blog pipeline workflow failures (${deployEnv})`,
+    });
+    if (deployEnv === 'prod') {
+      alertsTopic.addSubscription(
+        new subscriptions.EmailSubscription('martin@nakomis.com'),
+      );
+    }
+    alertsTopic.grantPublish(triggerRole);
+    alertsTopic.grantPublish(promoteRole);
+    // The blog-app scheduled-publish role (same account, different repo/stack)
+    // also publishes failures here; its grant lives in blog-app's
+    // BlogGithubStack as an identity policy on this topic's ARN.
+
     // ── Discovery ────────────────────────────────────────────────────────
     // The workflow file in blog-content hardcodes these values for clarity
     // (they are stable and not sensitive), but mirroring them to SSM keeps
@@ -188,6 +210,11 @@ export class BlogPipelineTriggerStack extends cdk.Stack {
       parameterName: `${ssmPrefix}/promote/role-arn`,
       stringValue: promoteRole.roleArn,
       description: `Promote role ARN for the blog-content publish workflow (${deployEnv})`,
+    });
+    new ssm.StringParameter(this, 'AlertsTopicArnParam', {
+      parameterName: `${ssmPrefix}/alerts/topic-arn`,
+      stringValue: alertsTopic.topicArn,
+      description: `SNS topic for pipeline workflow failure alerts (${deployEnv})`,
     });
 
     new cdk.CfnOutput(this, 'TriggerRoleArn', {
