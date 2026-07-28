@@ -76,7 +76,7 @@ describe('decidePost', () => {
     expect(result.status).toBe('approved');
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe('https://api.example.test/posts/a/decision');
-    expect(JSON.parse(init.body)).toEqual({ decision: 'approve' });
+    expect(JSON.parse(init.body)).toEqual({ decision: 'approve', announceBluesky: true });
   });
 
   test('throws on failure', async () => {

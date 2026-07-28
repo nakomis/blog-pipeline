@@ -129,11 +129,15 @@ export async function publishNow(idToken: string): Promise<PublishNowResult> {
   return (await response.json()) as PublishNowResult;
 }
 
-/** Approves or rejects a staged post. */
+/**
+ * Approves or rejects a staged post. On approval, `announceBluesky` records
+ * whether the post should be announced on Bluesky once live (PIPE-20).
+ */
 export async function decidePost(
   slug: string,
   decision: 'approve' | 'reject',
   idToken: string,
+  announceBluesky: boolean = true,
 ): Promise<DecisionResult> {
   const { apiUrl } = getConfig();
   const response = await fetch(
@@ -141,7 +145,7 @@ export async function decidePost(
     {
       method: 'POST',
       headers: { ...authHeaders(idToken), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ decision }),
+      body: JSON.stringify({ decision, announceBluesky }),
     },
   );
   if (!response.ok) {

@@ -138,7 +138,25 @@ describe('postDecision', () => {
     expect(JSON.parse(res.body)).toMatchObject({ status: 'approved' });
     const upd = ddbMock.commandCalls(UpdateCommand)[0].args[0].input;
     expect(upd.UpdateExpression).toContain('approvedAt = :now');
-    expect(upd.ExpressionAttributeValues).toMatchObject({ ':status': 'approved' });
+    expect(upd.ExpressionAttributeValues).toMatchObject({
+      ':status': 'approved',
+      // Announcing is the default when the body doesn't say otherwise (PIPE-20).
+      ':announce': true,
+    });
+  });
+
+  test('approve honours announceBluesky: false from the bag checkbox', async () => {
+    ddbMock.on(GetCommand).resolves({ Item: { slug: 'p', status: 'staged' } });
+    ddbMock.on(UpdateCommand).resolves({});
+
+    const res = await postDecision(
+      event('p', { decision: 'approve', announceBluesky: false }),
+    );
+
+    expect(JSON.parse(res.body)).toMatchObject({ status: 'approved' });
+    const upd = ddbMock.commandCalls(UpdateCommand)[0].args[0].input;
+    expect(upd.UpdateExpression).toContain('announceBluesky = :announce');
+    expect(upd.ExpressionAttributeValues).toMatchObject({ ':announce': false });
   });
 
   test('reject sets status failed and rejectedAt', async () => {

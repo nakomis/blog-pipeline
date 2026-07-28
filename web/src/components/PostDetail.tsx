@@ -139,6 +139,8 @@ function PostDetailInner({ idToken }: { idToken: string }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
+  // Default true: most posts get announced; untick for the quieter ones (PIPE-20).
+  const [announceBluesky, setAnnounceBluesky] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -207,7 +209,7 @@ function PostDetailInner({ idToken }: { idToken: string }) {
     setNotice(null);
     setError(null);
     try {
-      const result = await decidePost(slug, decision, idToken);
+      const result = await decidePost(slug, decision, idToken, announceBluesky);
       setNotice(`Post ${decision === 'approve' ? 'approved' : 'rejected'}.`);
       setData((prev) =>
         prev ? { ...prev, post: { ...prev.post, status: result.status as never } } : prev,
@@ -269,6 +271,17 @@ function PostDetailInner({ idToken }: { idToken: string }) {
           >
             Approve
           </button>
+          {staged && (
+            <label className="detail__announce">
+              <input
+                type="checkbox"
+                checked={announceBluesky}
+                disabled={busy}
+                onChange={(e) => setAnnounceBluesky(e.target.checked)}
+              />
+              Announce on Bluesky
+            </label>
+          )}
           <button
             type="button"
             className="btn"

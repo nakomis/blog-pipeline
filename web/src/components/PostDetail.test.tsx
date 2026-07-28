@@ -257,9 +257,28 @@ describe('PostDetail — actions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
 
     await waitFor(() =>
-      expect(mockedDecide).toHaveBeenCalledWith('my-post', 'approve', 'tok'),
+      expect(mockedDecide).toHaveBeenCalledWith('my-post', 'approve', 'tok', true),
     );
     expect(await screen.findByText('Post approved.')).toBeInTheDocument();
+  });
+
+  test('unticking the Bluesky checkbox approves with announceBluesky false', async () => {
+    mockedFetch.mockResolvedValue(sampleDetail);
+    mockedDecide.mockResolvedValue({
+      slug: 'my-post',
+      decision: 'approve',
+      status: 'approved',
+    });
+    mockedUseAuth.mockReturnValue(signedIn());
+    renderDetail();
+    await screen.findByText('My Post');
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /Announce on Bluesky/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+
+    await waitFor(() =>
+      expect(mockedDecide).toHaveBeenCalledWith('my-post', 'approve', 'tok', false),
+    );
   });
 
   test('actions are disabled for a non-staged post', async () => {
