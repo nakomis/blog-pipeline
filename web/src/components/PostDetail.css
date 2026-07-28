@@ -35,6 +35,16 @@
 .detail__actions {
   display: flex;
   gap: 0.5rem;
+  align-items: center;
+}
+
+.detail__announce {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+  user-select: none;
 }
 
 .detail__notice {

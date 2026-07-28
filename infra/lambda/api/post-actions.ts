@@ -145,13 +145,15 @@ export async function postDecision(
     return jsonResponse(400, { message: 'Missing slug' }, cors);
   }
 
-  let body: { decision?: unknown };
+  let body: { decision?: unknown; announceBluesky?: unknown };
   try {
     body = parseBody(event) as typeof body;
   } catch {
     return jsonResponse(400, { message: 'Malformed JSON body' }, cors);
   }
   const { decision } = body;
+  // Default true — only an explicit false suppresses the announcement (PIPE-20).
+  const announceBluesky = body.announceBluesky !== false;
   if (decision !== 'approve' && decision !== 'reject') {
     return jsonResponse(
       400,
@@ -181,9 +183,15 @@ export async function postDecision(
     new UpdateCommand({
       TableName: requireEnv('POSTS_TABLE_NAME'),
       Key: { slug },
-      UpdateExpression: `SET #st = :status, updatedAt = :now, ${timestampAttr} = :now`,
+      UpdateExpression:
+        `SET #st = :status, updatedAt = :now, ${timestampAttr} = :now` +
+        (approved ? ', announceBluesky = :announce' : ''),
       ExpressionAttributeNames: { '#st': 'status' },
-      ExpressionAttributeValues: { ':status': nextStatus, ':now': now },
+      ExpressionAttributeValues: {
+        ':status': nextStatus,
+        ':now': now,
+        ...(approved ? { ':announce': announceBluesky } : {}),
+      },
     }),
   );
 
