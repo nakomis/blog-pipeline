@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth, type AuthContextProps } from 'react-oidc-context';
 import { fetchPosts, type Post } from './api/posts';
+import { publishNow } from './api/post-detail';
 import PostCard from './components/PostCard';
 import { getConfig } from './config/config';
 import './App.css';
@@ -55,6 +56,8 @@ function Dashboard({ auth }: { auth: AuthContextProps }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<StageFilter>('all');
+  const [publishing, setPublishing] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   // The API Gateway Cognito authorizer is scopeless, so it validates the ID
   // token, not the access token.
@@ -97,6 +100,26 @@ function Dashboard({ auth }: { auth: AuthContextProps }) {
       `&logout_uri=${encodeURIComponent(logoutUri)}`;
   };
 
+  const triggerPublish = async () => {
+    if (!token) {
+      return;
+    }
+    setPublishing(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await publishNow(token);
+      setNotice(
+        'Publishing approved, due posts — the promote workflow is running. ' +
+          'It may take a minute or two to appear on the blog.',
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPublishing(false);
+    }
+  };
+
   const visibleStages =
     filter === 'all'
       ? PIPELINE_STAGES
@@ -135,6 +158,15 @@ function Dashboard({ auth }: { auth: AuthContextProps }) {
           >
             {loading ? 'Refreshing…' : 'Refresh'}
           </button>
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={() => void triggerPublish()}
+            disabled={publishing}
+            title="Promote approved posts whose publish date has arrived, without waiting for the nightly cron"
+          >
+            {publishing ? 'Publishing…' : 'Publish now'}
+          </button>
           <button type="button" className="btn" onClick={signOut}>
             Sign out
           </button>
@@ -144,6 +176,12 @@ function Dashboard({ auth }: { auth: AuthContextProps }) {
       {error && (
         <p role="alert" className="app__error">
           Could not load posts: {error}
+        </p>
+      )}
+
+      {notice && (
+        <p role="status" className="app__status">
+          {notice}
         </p>
       )}
 

@@ -6,6 +6,7 @@ import { imageCallback } from './image-callback';
 import { listPosts } from './list-posts';
 import { postDetail } from './post-detail';
 import { postEdit, postDecision } from './post-actions';
+import { publishNow } from './publish-now';
 import { corsHeaders, jsonResponse } from './http';
 
 /**
@@ -14,6 +15,7 @@ import { corsHeaders, jsonResponse } from './http';
  *  - `GET  /posts/{slug}`           — the detail bundle for the bag (PIPE-4);
  *  - `POST /posts/{slug}/edit`      — edit a staged draft, optionally re-review;
  *  - `POST /posts/{slug}/decision`  — approve or reject a staged post;
+ *  - `POST /publish-now`            — publish approved, due posts on demand (PIPE-14);
  *  - `POST /image-callback`         — fal.ai's image webhook (public, signed).
  *
  * One Lambda serves them all so the function stays warm and there is no second
@@ -38,6 +40,9 @@ export async function handler(
     }
     if (method === 'POST' && resource === '/posts/{slug}/decision') {
       return await postDecision(event);
+    }
+    if (method === 'POST' && resource === '/publish-now') {
+      return await publishNow(event);
     }
     if (method === 'POST' && resource === '/image-callback') {
       return await imageCallback(event);

@@ -13,18 +13,23 @@ jest.mock('../../../lambda/api/post-actions', () => ({
   postEdit: jest.fn().mockResolvedValue({ statusCode: 200, body: 'edit' }),
   postDecision: jest.fn().mockResolvedValue({ statusCode: 200, body: 'decision' }),
 }));
+jest.mock('../../../lambda/api/publish-now', () => ({
+  publishNow: jest.fn().mockResolvedValue({ statusCode: 202, body: 'published' }),
+}));
 
 import { handler } from '../../../lambda/api/handler';
 import { listPosts } from '../../../lambda/api/list-posts';
 import { imageCallback } from '../../../lambda/api/image-callback';
 import { postDetail } from '../../../lambda/api/post-detail';
 import { postEdit, postDecision } from '../../../lambda/api/post-actions';
+import { publishNow } from '../../../lambda/api/publish-now';
 
 const mockList = listPosts as jest.Mock;
 const mockCallback = imageCallback as jest.Mock;
 const mockDetail = postDetail as jest.Mock;
 const mockEdit = postEdit as jest.Mock;
 const mockDecision = postDecision as jest.Mock;
+const mockPublishNow = publishNow as jest.Mock;
 
 function event(
   method: string,
@@ -65,6 +70,13 @@ test('routes POST /posts/{slug}/decision to postDecision', async () => {
   await handler(event('POST', '/posts/{slug}/decision'));
   expect(mockDecision).toHaveBeenCalled();
   expect(mockEdit).not.toHaveBeenCalled();
+});
+
+test('routes POST /publish-now to publishNow', async () => {
+  const res = await handler(event('POST', '/publish-now'));
+  expect(res.statusCode).toBe(202);
+  expect(mockPublishNow).toHaveBeenCalled();
+  expect(mockDecision).not.toHaveBeenCalled();
 });
 
 test('returns 404 for an unknown route', async () => {

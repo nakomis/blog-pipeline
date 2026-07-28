@@ -105,6 +105,30 @@ export interface DecisionResult {
   status: string;
 }
 
+export interface PublishNowResult {
+  dispatched: boolean;
+  workflow: string;
+  repo: string;
+}
+
+/**
+ * Publishes on demand every approved post whose `publish_date` has arrived,
+ * without waiting for the 04:00 UTC cron. Dispatches the `promote-approved`
+ * workflow on blog-content (PIPE-14).
+ */
+export async function publishNow(idToken: string): Promise<PublishNowResult> {
+  const { apiUrl } = getConfig();
+  const response = await fetch(`${apiUrl}/publish-now`, {
+    method: 'POST',
+    headers: { ...authHeaders(idToken), 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to trigger publish (HTTP ${response.status})`);
+  }
+  return (await response.json()) as PublishNowResult;
+}
+
 /** Approves or rejects a staged post. */
 export async function decidePost(
   slug: string,
