@@ -14,6 +14,20 @@ import './PostDetail.css';
 
 type Tab = 'article' | 'diff' | 'reviews' | 'images';
 
+/**
+ * Where repo-hosted post images live. Posts that arrive with ready-made
+ * images (rather than `{{image}}` placeholders) reference `images/…` paths
+ * that exist in blog-content and are synced to the blog CDN on push — not in
+ * the pipeline's drafts bucket.
+ */
+const BLOG_IMAGE_BASE = 'https://blog.nakomis.com/';
+
+/** Drop a leading YAML frontmatter block — the preview renders the article, not the file. */
+function stripFrontmatter(markdown: string): string {
+  const match = markdown.match(/^---\n[\s\S]*?\n---\n?/);
+  return match ? markdown.slice(match[0].length) : markdown;
+}
+
 /** A read-only line diff between the original and the final draft. */
 function DiffView({ original, final }: { original: string; final: string }) {
   const parts = useMemo(() => diffLines(original, final), [original, final]);
@@ -89,7 +103,12 @@ function ReviewsView({
 /** The generated images. */
 function ImagesView({ images }: { images: PostDetailData['images'] }) {
   if (images.length === 0) {
-    return <p className="detail__empty">This post has no images.</p>;
+    return (
+      <p className="detail__empty">
+        This post has no pipeline-generated images. Any ready-made images it
+        references are shown in place in the Article tab.
+      </p>
+    );
   }
   return (
     <div className="images">
@@ -339,12 +358,16 @@ function PostDetailInner({ idToken }: { idToken: string }) {
                 components={{
                   img: ({ src, alt, ...props }) => {
                     const normalised = src?.replace(/^\.\//, '') ?? '';
-                    const resolved = imageUrlByPath.get(normalised) ?? src;
+                    const resolved =
+                      imageUrlByPath.get(normalised) ??
+                      (normalised.startsWith('images/')
+                        ? `${BLOG_IMAGE_BASE}${normalised}`
+                        : src);
                     return <img src={resolved} alt={alt} loading="lazy" {...props} />;
                   },
                 }}
               >
-                {data.finalMarkdown}
+                {stripFrontmatter(data.finalMarkdown)}
               </Markdown>
             </div>
           </div>
