@@ -128,15 +128,30 @@ describe('PostDetail — content', () => {
     renderDetail();
     await screen.findByText('My Post');
 
-    // Index 1 is ready → presigned URL; index 2 is pending → unresolved path.
+    // Index 1 is ready → presigned URL; index 2 has no generated image →
+    // falls back to the repo-hosted copy on the blog CDN.
     expect(screen.getByAltText('a black cat')).toHaveAttribute(
       'src',
       'https://img.test/1.png',
     );
     expect(screen.getByAltText('a ginger cat')).toHaveAttribute(
       'src',
-      'images/my-post-2.png',
+      'https://blog.nakomis.com/images/my-post-2.png',
     );
+  });
+
+  test('strips frontmatter from the article preview', async () => {
+    mockedFetch.mockResolvedValue({
+      ...sampleDetail,
+      finalMarkdown:
+        '---\ntitle: "My Post"\ntags: ["cats"]\n---\n\n# Heading\n\nBody text.',
+    });
+    mockedUseAuth.mockReturnValue(signedIn());
+    renderDetail();
+    await screen.findByText('My Post');
+
+    expect(screen.getByText('Body text.')).toBeInTheDocument();
+    expect(screen.queryByText(/tags:/)).not.toBeInTheDocument();
   });
 
   test('surfaces a load error', async () => {
