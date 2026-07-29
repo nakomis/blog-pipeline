@@ -20,7 +20,9 @@
     "seed-sandbox": "NPM_ENVIRONMENT=sandbox ts-node scripts/seed-posts.ts",
     "seed-prod": "NPM_ENVIRONMENT=prod ts-node scripts/seed-posts.ts",
     "seed-draft-sandbox": "NPM_ENVIRONMENT=sandbox ts-node scripts/seed-draft.ts",
-    "seed-draft-prod": "NPM_ENVIRONMENT=prod ts-node scripts/seed-draft.ts"
+    "seed-draft-prod": "NPM_ENVIRONMENT=prod ts-node scripts/seed-draft.ts",
+    "identity-check-sandbox": "NPM_ENVIRONMENT=sandbox ts-node scripts/reviewer-identity-check.ts",
+    "identity-check-prod": "NPM_ENVIRONMENT=prod ts-node scripts/reviewer-identity-check.ts"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.145",
