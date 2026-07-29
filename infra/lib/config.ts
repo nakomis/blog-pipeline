@@ -137,8 +137,23 @@ export const REVIEW = {
  * value and lives in the `${ssmPrefix}/image/fal` parameter.
  */
 export const IMAGE = {
-  /** fal.ai model slug, used to build the queue submit URL. */
+  /** Default fal.ai model slug, used when a tag names no model (or an unknown one). */
   model: 'fal-ai/flux-2-pro',
+  /**
+   * Models a `{{image model="…"}}` tag may name, mapped to fal endpoints
+   * (PIPE-27). The choice is editorial — made by the author while writing the
+   * tag — from the 2026-07-29 comparison: pro is the house default for
+   * cinematic illustration, max the fidelity upgrade at 2.3× the cost,
+   * gpt-image-2 the only model that renders readable labels, recraft the flat
+   * vector option. An unknown name falls back to `model` rather than failing
+   * the review.
+   */
+  models: {
+    'flux-2-pro': 'fal-ai/flux-2-pro',
+    'flux-2-max': 'fal-ai/flux-2-max',
+    'gpt-image-2': 'fal-ai/gpt-image-2',
+    recraft: 'fal-ai/recraft/v4/text-to-image',
+  },
   /** Output dimensions — 3:2 landscape, matching the blog's hero images. */
   width: 1216,
   height: 832,

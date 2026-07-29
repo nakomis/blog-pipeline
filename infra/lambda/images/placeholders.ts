@@ -69,6 +69,11 @@ export interface ImagePlaceholder {
   prompt: string;
   /** Optional negative prompt — parsed and stored, not sent to flux-2-pro. */
   negative?: string;
+  /**
+   * Optional model name (PIPE-27) — a key of `IMAGE.models`, chosen by the
+   * author. Resolution and fallback happen at submit time, not here.
+   */
+  model?: string;
 }
 
 /**
@@ -93,6 +98,7 @@ export function parseImagePlaceholders(
       index,
       prompt: attr(attrs, 'prompt') ?? '',
       negative: attr(attrs, 'negative'),
+      model: attr(attrs, 'model'),
     });
   }
   return placeholders;
