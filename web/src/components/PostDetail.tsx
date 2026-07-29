@@ -8,6 +8,7 @@ import {
   decidePost,
   editPost,
   fetchPostDetail,
+  type AnnounceMode,
   type PostDetail as PostDetailData,
 } from '../api/post-detail';
 import { displayStage } from '../api/posts';
@@ -139,8 +140,9 @@ function PostDetailInner({ idToken }: { idToken: string }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
-  // Default true: most posts get announced; untick for the quieter ones (PIPE-20).
-  const [announceBluesky, setAnnounceBluesky] = useState(true);
+  // Default 'announce': most posts get announced on publication; 'skip' for
+  // the quieter ones, 'force' to jump the flood guard (PIPE-20/PIPE-29).
+  const [announceBluesky, setAnnounceBluesky] = useState<AnnounceMode>('announce');
   const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -273,13 +275,16 @@ function PostDetailInner({ idToken }: { idToken: string }) {
           </button>
           {staged && (
             <label className="detail__announce">
-              <input
-                type="checkbox"
-                checked={announceBluesky}
+              Bluesky:{' '}
+              <select
+                value={announceBluesky}
                 disabled={busy}
-                onChange={(e) => setAnnounceBluesky(e.target.checked)}
-              />
-              Announce on Bluesky
+                onChange={(e) => setAnnounceBluesky(e.target.value as AnnounceMode)}
+              >
+                <option value="announce">Announce</option>
+                <option value="skip">Don&apos;t Announce</option>
+                <option value="force">Force Announce</option>
+              </select>
             </label>
           )}
           <button

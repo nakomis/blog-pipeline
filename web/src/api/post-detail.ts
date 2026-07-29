@@ -130,14 +130,22 @@ export async function publishNow(idToken: string): Promise<PublishNowResult> {
 }
 
 /**
+ * How a post should behave on Bluesky once live (PIPE-29):
+ * - 'announce' — announced on publication, subject to the flood guard;
+ * - 'skip' — never announced;
+ * - 'force' — announced on publication, bypassing the flood guard.
+ */
+export type AnnounceMode = 'announce' | 'skip' | 'force';
+
+/**
  * Approves or rejects a staged post. On approval, `announceBluesky` records
- * whether the post should be announced on Bluesky once live (PIPE-20).
+ * how the post should be announced on Bluesky once live (PIPE-20/PIPE-29).
  */
 export async function decidePost(
   slug: string,
   decision: 'approve' | 'reject',
   idToken: string,
-  announceBluesky: boolean = true,
+  announceBluesky: AnnounceMode = 'announce',
 ): Promise<DecisionResult> {
   const { apiUrl } = getConfig();
   const response = await fetch(

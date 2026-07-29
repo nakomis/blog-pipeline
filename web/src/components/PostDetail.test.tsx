@@ -257,12 +257,12 @@ describe('PostDetail — actions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
 
     await waitFor(() =>
-      expect(mockedDecide).toHaveBeenCalledWith('my-post', 'approve', 'tok', true),
+      expect(mockedDecide).toHaveBeenCalledWith('my-post', 'approve', 'tok', 'announce'),
     );
     expect(await screen.findByText('Post approved.')).toBeInTheDocument();
   });
 
-  test('unticking the Bluesky checkbox approves with announceBluesky false', async () => {
+  test("selecting Don't Announce approves with announceBluesky 'skip'", async () => {
     mockedFetch.mockResolvedValue(sampleDetail);
     mockedDecide.mockResolvedValue({
       slug: 'my-post',
@@ -273,11 +273,34 @@ describe('PostDetail — actions', () => {
     renderDetail();
     await screen.findByText('My Post');
 
-    fireEvent.click(screen.getByRole('checkbox', { name: /Announce on Bluesky/ }));
+    fireEvent.change(screen.getByRole('combobox', { name: /Bluesky/ }), {
+      target: { value: 'skip' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
 
     await waitFor(() =>
-      expect(mockedDecide).toHaveBeenCalledWith('my-post', 'approve', 'tok', false),
+      expect(mockedDecide).toHaveBeenCalledWith('my-post', 'approve', 'tok', 'skip'),
+    );
+  });
+
+  test("selecting Force Announce approves with announceBluesky 'force'", async () => {
+    mockedFetch.mockResolvedValue(sampleDetail);
+    mockedDecide.mockResolvedValue({
+      slug: 'my-post',
+      decision: 'approve',
+      status: 'approved',
+    });
+    mockedUseAuth.mockReturnValue(signedIn());
+    renderDetail();
+    await screen.findByText('My Post');
+
+    fireEvent.change(screen.getByRole('combobox', { name: /Bluesky/ }), {
+      target: { value: 'force' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+
+    await waitFor(() =>
+      expect(mockedDecide).toHaveBeenCalledWith('my-post', 'approve', 'tok', 'force'),
     );
   });
 

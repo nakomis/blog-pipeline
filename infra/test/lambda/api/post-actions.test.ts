@@ -141,22 +141,42 @@ describe('postDecision', () => {
     expect(upd.ExpressionAttributeValues).toMatchObject({
       ':status': 'approved',
       // Announcing is the default when the body doesn't say otherwise (PIPE-20).
-      ':announce': true,
+      ':announce': 'announce',
     });
   });
 
-  test('approve honours announceBluesky: false from the bag checkbox', async () => {
+  test("approve honours announceBluesky: 'skip' from the bag dropdown", async () => {
     ddbMock.on(GetCommand).resolves({ Item: { slug: 'p', status: 'staged' } });
     ddbMock.on(UpdateCommand).resolves({});
 
     const res = await postDecision(
-      event('p', { decision: 'approve', announceBluesky: false }),
+      event('p', { decision: 'approve', announceBluesky: 'skip' }),
     );
 
     expect(JSON.parse(res.body)).toMatchObject({ status: 'approved' });
     const upd = ddbMock.commandCalls(UpdateCommand)[0].args[0].input;
     expect(upd.UpdateExpression).toContain('announceBluesky = :announce');
-    expect(upd.ExpressionAttributeValues).toMatchObject({ ':announce': false });
+    expect(upd.ExpressionAttributeValues).toMatchObject({ ':announce': 'skip' });
+  });
+
+  test("approve honours announceBluesky: 'force' (flood-guard bypass)", async () => {
+    ddbMock.on(GetCommand).resolves({ Item: { slug: 'p', status: 'staged' } });
+    ddbMock.on(UpdateCommand).resolves({});
+
+    await postDecision(event('p', { decision: 'approve', announceBluesky: 'force' }));
+
+    const upd = ddbMock.commandCalls(UpdateCommand)[0].args[0].input;
+    expect(upd.ExpressionAttributeValues).toMatchObject({ ':announce': 'force' });
+  });
+
+  test('approve maps a legacy boolean false to skip (PIPE-20 clients)', async () => {
+    ddbMock.on(GetCommand).resolves({ Item: { slug: 'p', status: 'staged' } });
+    ddbMock.on(UpdateCommand).resolves({});
+
+    await postDecision(event('p', { decision: 'approve', announceBluesky: false }));
+
+    const upd = ddbMock.commandCalls(UpdateCommand)[0].args[0].input;
+    expect(upd.ExpressionAttributeValues).toMatchObject({ ':announce': 'skip' });
   });
 
   test('reject sets status failed and rejectedAt', async () => {
