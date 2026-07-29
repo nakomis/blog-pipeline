@@ -17,9 +17,12 @@ resolved by separate stages of the publishing pipeline. Do not treat their
 raw form as a blocker; instead, judge the post on the intent and placement
 of what they will become.
 
-- {{image prompt="..." negative-prompt="..."}} — an AI-generated image will
-  be substituted here. Judge the image's intent (the prompt text) and its
-  placement in the post; ignore the literal braces.
+- {{image prompt="..." negative="..." model="..."}} — an AI-generated image
+  will be substituted here. Judge the image's intent (the prompt text) and
+  its placement in the post; ignore the literal braces. The prompt doubles
+  as the image's alt text, so flag a prompt that would read poorly aloud —
+  e.g. one ending in style keywords ("cinematic, painterly, conceptual")
+  rather than describing the scene.
 - {{donate}} and other {{token}} fragments — short snippets (donate links,
   affiliate boilerplate) substituted at publish time. Treat them as resolved.
 - Front-matter dates (e.g. date: 2026-05-15) may be placeholders; the actual
