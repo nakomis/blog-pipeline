@@ -66,6 +66,22 @@ test('submits a fal job per placeholder and records them on the post', async () 
   ]);
 });
 
+test('passes a tag-named model through to submit and the job row (PIPE-27)', async () => {
+  mockGetDraft.mockResolvedValue(
+    '{{image prompt="a labelled diagram" model="gpt-image-2"}}',
+  );
+  mockImageExists.mockResolvedValue(false);
+
+  await handler({ slug: 'a-post' });
+
+  expect(mockSubmit).toHaveBeenCalledWith(
+    expect.objectContaining({ model: 'gpt-image-2' }),
+  );
+  expect(mockPutJob).toHaveBeenCalledWith(
+    expect.objectContaining({ index: 1, model: 'gpt-image-2' }),
+  );
+});
+
 test('skips a placeholder whose image already exists (idempotent re-run)', async () => {
   mockGetDraft.mockResolvedValue(
     '{{image prompt="one"}}\n{{image prompt="two"}}',

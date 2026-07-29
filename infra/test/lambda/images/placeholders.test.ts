@@ -22,6 +22,13 @@ describe('parseImagePlaceholders', () => {
     ]);
   });
 
+  test('parses the model attribute when the tag names one (PIPE-27)', () => {
+    const md = `{{image prompt="a labelled diagram" model="gpt-image-2"}}`;
+    expect(parseImagePlaceholders(md, 'post')).toEqual([
+      { index: 1, prompt: 'a labelled diagram', model: 'gpt-image-2' },
+    ]);
+  });
+
   test('returns nothing when there are no placeholders', () => {
     expect(parseImagePlaceholders('plain markdown', 'post')).toEqual([]);
   });

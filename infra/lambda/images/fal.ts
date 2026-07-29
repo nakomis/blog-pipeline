@@ -24,11 +24,24 @@ export interface SubmitImageInput {
   callbackUrl: string;
   /** fal API key — read from SSM by the caller. */
   falKey: string;
+  /** Optional model name from the tag (PIPE-27) — a key of `IMAGE.models`. */
+  model?: string;
+}
+
+/**
+ * Resolve a tag's `model` name to a fal endpoint. Unknown or absent names fall
+ * back to the default — a typo in a draft must never fail a review run.
+ */
+export function resolveImageModel(name?: string): string {
+  if (name && name in IMAGE.models) {
+    return IMAGE.models[name as keyof typeof IMAGE.models];
+  }
+  return IMAGE.model;
 }
 
 /** Submit one generation job; resolves to fal's `request_id`. */
 export async function submitImage(input: SubmitImageInput): Promise<string> {
-  const url = `https://queue.fal.run/${IMAGE.model}?fal_webhook=${encodeURIComponent(input.callbackUrl)}`;
+  const url = `https://queue.fal.run/${resolveImageModel(input.model)}?fal_webhook=${encodeURIComponent(input.callbackUrl)}`;
   const res = await fetch(url, {
     method: 'POST',
     headers: {

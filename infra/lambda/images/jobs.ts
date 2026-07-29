@@ -30,6 +30,8 @@ export interface ImageJob {
   prompt: string;
   /** Parsed but not sent to flux-2-pro — kept for a future regenerate path. */
   negative?: string;
+  /** Model name from the tag (PIPE-27) — absent means the default was used. */
+  model?: string;
   status: ImageJobStatus;
   createdAt: string;
   expiresAt: number;
@@ -46,6 +48,7 @@ export async function putJob(job: {
   index: number;
   prompt: string;
   negative?: string;
+  model?: string;
 }): Promise<void> {
   const now = new Date();
   const item: ImageJob = {

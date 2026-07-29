@@ -78,6 +78,7 @@ export async function handler(
       prompt: placeholder.prompt,
       callbackUrl,
       falKey,
+      model: placeholder.model,
     });
     await putJob({
       requestId,
@@ -85,6 +86,7 @@ export async function handler(
       index: placeholder.index,
       prompt: placeholder.prompt,
       negative: placeholder.negative,
+      model: placeholder.model,
     });
     images.push({
       index: placeholder.index,
