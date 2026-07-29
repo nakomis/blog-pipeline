@@ -152,8 +152,15 @@ export async function postDecision(
     return jsonResponse(400, { message: 'Malformed JSON body' }, cors);
   }
   const { decision } = body;
-  // Default true — only an explicit false suppresses the announcement (PIPE-20).
-  const announceBluesky = body.announceBluesky !== false;
+  // Announce mode (PIPE-29): 'announce' (default, flood-guarded) | 'skip' |
+  // 'force' (bypasses the guard). Legacy boolean clients still work: false
+  // means 'skip', anything else falls through to the default.
+  const announceBluesky =
+    body.announceBluesky === 'skip' || body.announceBluesky === false
+      ? 'skip'
+      : body.announceBluesky === 'force'
+        ? 'force'
+        : 'announce';
   if (decision !== 'approve' && decision !== 'reject') {
     return jsonResponse(
       400,
