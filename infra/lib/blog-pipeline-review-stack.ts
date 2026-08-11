@@ -186,7 +186,9 @@ export class BlogPipelineReviewStack extends cdk.Stack {
     draftsBucket.grantWrite(persistIterationFn);
 
     const redraftFn = makeFn('RedraftFn', 'redraft', {
-      timeout: cdk.Duration.seconds(180),
+      // A full-post rewrite of a long draft (~32 KB) can exceed 3 minutes of
+      // model output time; 180 s killed cat-training-deep-dive (PIPE-35).
+      timeout: cdk.Duration.seconds(600),
       memorySize: 512,
       environment: { DRAFTS_BUCKET: draftsBucket.bucketName },
     });
