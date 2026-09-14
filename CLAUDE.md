@@ -37,8 +37,8 @@ human approval before publication.
 
 ## Project management
 
-Tracked in Taiga (prefix **PIPE**): <http://taiga.nakom.is/project/blog-pipeline/>.
-Features are split across stories PIPE-1 … PIPE-6 — pick one up with `/start-taiga`.
+Tracked in Plane (identifier **PIPE**) at <https://plane.home.nakomis.com/nakomis/>.
+Features are split across stories PIPE-1 … PIPE-6 — pick one up with `/start-plane`.
 
 ## Architecture diagrams
 
