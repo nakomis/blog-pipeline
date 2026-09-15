@@ -46,3 +46,21 @@ describe('buildRedraftPrompt', () => {
     expect(prompt).not.toContain('azure');
   });
 });
+
+// A reviewer is sent the system prompt and one draft — nothing else. Without
+// being told so it fills the gap: an early review of a corpusmap post opened
+// "genuinely one of the strongest technical write-ups I've reviewed for this
+// blog", a comparison it had no set to draw on. The persona implies an ongoing
+// role, and the model furnishes the role's backstory.
+test('the review prompt forbids comparative and historical claims', () => {
+  const p = REVIEW_SYSTEM_PROMPT.toLowerCase();
+  expect(p).toContain('in isolation');
+  expect(p).toMatch(/no memory of previous\s+reviews/);
+  expect(p).toMatch(/do not make\s+comparative/);
+});
+
+test('the review prompt still asks for evidence from the draft itself', () => {
+  expect(REVIEW_SYSTEM_PROMPT.toLowerCase()).toMatch(
+    /supported by the draft in\s+front/,
+  );
+});
