@@ -93,6 +93,18 @@ describe('BlogPipelineReviewStack', () => {
     });
   });
 
+  test('switches Grok structured outputs on for the reviewer (PIPE-30)', () => {
+    synth(sandboxConfig).hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'blog-pipeline-review-reviewer-sandbox',
+      Environment: {
+        Variables: Match.objectLike({
+          GROK_PARAM_NAME: Match.anyValue(),
+          GROK_STRUCTURED_OUTPUTS: 'true',
+        }),
+      },
+    });
+  });
+
   test('wires the fal credit warning into image-submit (PIPE-34)', () => {
     const template = synth(sandboxConfig);
     template.hasResourceProperties('AWS::SSM::Parameter', {

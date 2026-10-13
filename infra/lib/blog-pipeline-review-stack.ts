@@ -191,6 +191,9 @@ export class BlogPipelineReviewStack extends cdk.Stack {
         GEMINI_PARAM_NAME: geminiParam.parameterName,
         ANTHROPIC_PARAM_NAME: anthropicParam.parameterName,
         GROK_PARAM_NAME: grokParam.parameterName,
+        // Ask Grok for `response_format: json_schema`; a rejection falls back
+        // to plain JSON mode and logs a warning (PIPE-30). 'false' skips it.
+        GROK_STRUCTURED_OUTPUTS: 'true',
       },
     });
     draftsBucket.grantRead(reviewerFn);
