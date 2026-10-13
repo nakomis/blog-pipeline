@@ -9,7 +9,7 @@ import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import { Construct } from 'constructs';
-import { EnvConfig, REVIEW } from './config';
+import { alertsTopicName, EnvConfig, IMAGE, REVIEW } from './config';
 
 export interface BlogPipelineReviewStackProps extends cdk.StackProps {
   config: EnvConfig;
@@ -112,6 +112,36 @@ export class BlogPipelineReviewStack extends cdk.Stack {
       stringValue: placeholder,
       description: 'fal.ai API key for FLUX image generation — plain key string',
     });
+
+    // ── fal credit early warning (PIPE-34) ───────────────────────────────
+    // An optional fal *admin* key, which unlocks the real account balance from
+    // fal's billing API. Left at its placeholder the pre-flight falls back to a
+    // monthly-budget estimate, so populating it is optional.
+    const falAdminParam = new ssm.StringParameter(this, 'FalAdminParam', {
+      parameterName: `${ssmPrefix}/image/fal-admin`,
+      stringValue: placeholder,
+      description:
+        'Optional fal.ai ADMIN key for the credit-balance check — plain key string',
+    });
+    // Small JSON state written by image-submit: this month's generation count,
+    // the day we last warned, and the snapshot the dashboard banner reads. The
+    // Lambda overwrites it at runtime; CFN leaves the value alone thereafter.
+    const falCreditStateParam = new ssm.StringParameter(
+      this,
+      'FalCreditStateParam',
+      {
+        parameterName: `${ssmPrefix}/image/fal-credit-state`,
+        stringValue: '{}',
+        description:
+          'fal.ai credit warning state (JSON) — written by image-submit, read by the API',
+      },
+    );
+    // The alerts topic lives in the trigger stack, which already depends on
+    // this one; its name is fixed, so derive the ARN rather than add a cycle.
+    const alertsTopicArn = cdk.Arn.format(
+      { service: 'sns', resource: alertsTopicName(deployEnv) },
+      this,
+    );
 
     // ── Lambdas ──────────────────────────────────────────────────────────
     const makeFn = (
@@ -219,9 +249,25 @@ export class BlogPipelineReviewStack extends cdk.Stack {
         IMAGE_JOBS_TABLE_NAME: imageJobsTable.tableName,
         FAL_PARAM_NAME: falParam.parameterName,
         IMAGE_CALLBACK_URL: `https://${apiDomainName}/image-callback`,
+        FAL_ADMIN_PARAM_NAME: falAdminParam.parameterName,
+        FAL_CREDIT_STATE_PARAM_NAME: falCreditStateParam.parameterName,
+        ALERTS_TOPIC_ARN: alertsTopicArn,
+        FAL_CREDIT_WARN_THRESHOLD_USD: String(IMAGE.credit.warnThresholdUsd),
+        FAL_MONTHLY_BUDGET_USD: String(IMAGE.credit.monthlyBudgetUsd),
+        FAL_COST_PER_IMAGE_USD: String(IMAGE.credit.costPerImageUsd),
       },
     });
     falParam.grantRead(imageSubmitFn);
+    falAdminParam.grantRead(imageSubmitFn);
+    falCreditStateParam.grantRead(imageSubmitFn);
+    falCreditStateParam.grantWrite(imageSubmitFn);
+    imageSubmitFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: 'PublishFalCreditWarning',
+        actions: ['sns:Publish'],
+        resources: [alertsTopicArn],
+      }),
+    );
     draftsBucket.grantRead(imageSubmitFn);
     postsTable.grantReadWriteData(imageSubmitFn);
     imageJobsTable.grantWriteData(imageSubmitFn);

@@ -20,7 +20,12 @@ If you find this useful, please consider buying me a coffee:
 - [Environments](#environments)
 - [Project status](#project-status)
 - [Review loop](#review-loop)
+  * [Manual prerequisites](#manual-prerequisites)
+  * [Image generation (PIPE-6)](#image-generation-pipe-6)
+  * [fal.ai credit warning (PIPE-34)](#falai-credit-warning-pipe-34)
+  * [Sandbox dry-run](#sandbox-dry-run)
 - [Trigger](#trigger)
+  * [Manual prerequisite](#manual-prerequisite)
 - [First deployment](#first-deployment)
 - [Architecture Diagrams](#architecture-diagrams)
 - [Support](#support)
@@ -211,6 +216,38 @@ aws ssm put-parameter \
 
 Left at its placeholder, `image-submit` fails to read the key and submits no
 jobs — the post is still reviewed and published, just without illustrations.
+
+### fal.ai credit warning (PIPE-34)
+
+fal locks the account and rejects every generation once its prepaid balance
+runs out, so `image-submit` runs a pre-flight credit check before submitting.
+When the remaining credit drops below **$5** it publishes a warning to the
+failure-alerts SNS topic (`blog-pipeline-alerts-{env}`, PIPE-15) at most once
+per UTC day, and the dashboard shows a banner. The check only ever warns: low
+credit, or a failed check, never stops or changes a generation.
+
+The remaining credit comes from fal's account-billing API
+(`GET https://api.fal.ai/v1/account/billing?expand=credits`) when an **admin**
+key is configured — fal refuses that endpoint to ordinary inference keys. The
+admin key goes in its own optional parameter:
+
+```bash
+aws ssm put-parameter \
+  --profile nakom.is-sandbox \
+  --name /blog-pipeline/sandbox/image/fal-admin \
+  --type String --overwrite \
+  --value "<fal ADMIN key>"
+```
+
+Without it (or if the call fails) the check falls back to an estimate: a
+monthly budget less this month's generation count × an estimated cost per
+image. The defaults live in `IMAGE.credit` in `lib/config.ts` and reach the
+Lambda as env vars — `FAL_CREDIT_WARN_THRESHOLD_USD` (5),
+`FAL_MONTHLY_BUDGET_USD` (25) and `FAL_COST_PER_IMAGE_USD` (0.06).
+
+The generation count, the last-warned date and the latest snapshot (served to
+the dashboard by `GET /image-credit`) are kept as JSON in
+`/blog-pipeline/{env}/image/fal-credit-state`, written by the Lambda.
 
 ### Sandbox dry-run
 

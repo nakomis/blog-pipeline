@@ -1,4 +1,8 @@
-import { resolveImageModel, submitImage } from '../../../lambda/images/fal';
+import {
+  fetchFalBalance,
+  resolveImageModel,
+  submitImage,
+} from '../../../lambda/images/fal';
 
 describe('resolveImageModel (PIPE-27)', () => {
   test('maps a known model name to its fal endpoint', () => {
@@ -81,5 +85,35 @@ describe('submitImage', () => {
     await expect(
       submitImage({ prompt: 'x', callbackUrl: 'u', falKey: 'k' }),
     ).rejects.toThrow(/no request_id/);
+  });
+});
+
+describe('fetchFalBalance (PIPE-34)', () => {
+  const fetchMock = jest.fn();
+
+  beforeEach(() => fetchMock.mockReset());
+
+  test('reads credits.current_balance from the billing endpoint', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ credits: { current_balance: 24.5, currency: 'USD' } }),
+    });
+
+    await expect(fetchFalBalance('ADMIN', fetchMock)).resolves.toBe(24.5);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://api.fal.ai/v1/account/billing?expand=credits');
+    expect(init.headers.authorization).toBe('Key ADMIN');
+  });
+
+  test('throws on a non-OK response (e.g. a non-admin key)', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 403 });
+    await expect(fetchFalBalance('KEY', fetchMock)).rejects.toThrow(/403/);
+  });
+
+  test('throws when the balance is missing', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+    await expect(fetchFalBalance('KEY', fetchMock)).rejects.toThrow(
+      /current_balance/,
+    );
   });
 });

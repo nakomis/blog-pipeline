@@ -3,6 +3,7 @@ import {
   DynamoDBDocumentClient,
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
+import { checkFalCredit, recordGenerations } from '../images/credit';
 import { submitImage } from '../images/fal';
 import { putJob } from '../images/jobs';
 import { imageKey, parseImagePlaceholders } from '../images/placeholders';
@@ -21,6 +22,9 @@ import { readParameterString, requireEnv } from './runtime';
  * Idempotent: an image whose PNG is already in S3 is skipped, so a re-invoke
  * (e.g. a PIPE-4 re-review) never regenerates or double-charges. The post's
  * `images` list is (re)written so the dashboard can show generation progress.
+ *
+ * Before submitting it runs the fal credit pre-flight (PIPE-34), which only
+ * ever warns: a failed or low-credit check never stops a submission.
  */
 
 const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
@@ -56,6 +60,20 @@ export async function handler(
 
   // Only read the fal key once we know there is something to generate.
   const falKey = await readParameterString(requireEnv('FAL_PARAM_NAME'));
+
+  const creditStateParam = process.env.FAL_CREDIT_STATE_PARAM_NAME;
+  const alertsTopicArn = process.env.ALERTS_TOPIC_ARN;
+  if (creditStateParam && alertsTopicArn) {
+    try {
+      await checkFalCredit({
+        stateParamName: creditStateParam,
+        adminParamName: process.env.FAL_ADMIN_PARAM_NAME,
+        topicArn: alertsTopicArn,
+      });
+    } catch (err) {
+      console.error('fal credit pre-flight failed; generating anyway', err);
+    }
+  }
 
   const images: ImageEntry[] = [];
   let submitted = 0;
@@ -95,6 +113,14 @@ export async function handler(
       key,
     });
     submitted += 1;
+  }
+
+  if (creditStateParam) {
+    try {
+      await recordGenerations(creditStateParam, submitted);
+    } catch (err) {
+      console.error('Failed to record fal generation count', err);
+    }
   }
 
   await docClient.send(

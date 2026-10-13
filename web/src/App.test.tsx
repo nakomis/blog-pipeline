@@ -4,6 +4,7 @@ import type { AuthContextProps } from 'react-oidc-context';
 import { useAuth } from 'react-oidc-context';
 import App, { PIPELINE_STAGES } from './App';
 import { fetchPosts, type Post } from './api/posts';
+import { fetchImageCredit } from './api/image-credit';
 
 vi.mock('react-oidc-context');
 // Mock only the fetch — `displayStage` is real logic the grouping tests rely on.
@@ -11,6 +12,7 @@ vi.mock('./api/posts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./api/posts')>()),
   fetchPosts: vi.fn(),
 }));
+vi.mock('./api/image-credit', () => ({ fetchImageCredit: vi.fn() }));
 vi.mock('./config/config', () => ({
   getConfig: () => ({
     env: 'test',
@@ -27,6 +29,7 @@ vi.mock('./config/config', () => ({
 
 const mockedUseAuth = vi.mocked(useAuth);
 const mockedFetchPosts = vi.mocked(fetchPosts);
+const mockedFetchImageCredit = vi.mocked(fetchImageCredit);
 
 /** Builds an `AuthContextProps` stand-in with sensible signed-out defaults. */
 function authState(overrides: Partial<AuthContextProps>): AuthContextProps {
@@ -63,6 +66,7 @@ function renderApp() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockedFetchImageCredit.mockResolvedValue({ low: false });
 });
 
 describe('App — authentication gate', () => {
@@ -100,6 +104,33 @@ describe('App — authentication gate', () => {
 });
 
 describe('App — dashboard', () => {
+  test('shows the low fal credit banner (PIPE-34)', async () => {
+    mockedFetchPosts.mockResolvedValue(samplePosts);
+    mockedFetchImageCredit.mockResolvedValue({
+      low: true,
+      remainingUsd: 3.2,
+      thresholdUsd: 5,
+      source: 'fal',
+    });
+    mockedUseAuth.mockReturnValue(signedIn());
+    renderApp();
+
+    expect(
+      await screen.findByText(/fal\.ai image credit is running low: \$3\.20/),
+    ).toBeInTheDocument();
+    expect(mockedFetchImageCredit).toHaveBeenCalledWith('tok');
+  });
+
+  test('a failed credit lookup hides the banner but still loads posts', async () => {
+    mockedFetchPosts.mockResolvedValue(samplePosts);
+    mockedFetchImageCredit.mockRejectedValue(new Error('HTTP 500'));
+    mockedUseAuth.mockReturnValue(signedIn());
+    renderApp();
+
+    expect(await screen.findByText('Queued Post')).toBeInTheDocument();
+    expect(screen.queryByText(/credit is running low/)).not.toBeInTheDocument();
+  });
+
   test('a promoted post with a future date sits in Queued with its date shown', async () => {
     mockedFetchPosts.mockResolvedValue([
       {

@@ -66,3 +66,36 @@ export async function submitImage(input: SubmitImageInput): Promise<string> {
   }
   return body.request_id;
 }
+
+interface FalBillingResponse {
+  credits?: { current_balance?: number; currency?: string };
+}
+
+/**
+ * Read the account's remaining fal.ai credit (PIPE-34).
+ *
+ * Calls the Platform API's account-billing endpoint, which reports the prepaid
+ * balance under `credits.current_balance`. fal only serves it to an *admin*
+ * key — an ordinary inference key is refused — so the caller treats any throw
+ * here as "balance unknown" and falls back to the monthly-budget proxy.
+ *
+ * `fetchImpl` is injectable so tests never touch the network.
+ */
+export async function fetchFalBalance(
+  adminKey: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<number> {
+  const res = await fetchImpl(
+    'https://api.fal.ai/v1/account/billing?expand=credits',
+    { headers: { authorization: `Key ${adminKey}` } },
+  );
+  if (!res.ok) {
+    throw new Error(`fal billing lookup failed (${res.status})`);
+  }
+  const body = (await res.json()) as FalBillingResponse;
+  const balance = body.credits?.current_balance;
+  if (typeof balance !== 'number' || !Number.isFinite(balance)) {
+    throw new Error('fal billing response carried no credits.current_balance');
+  }
+  return balance;
+}

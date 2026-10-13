@@ -6,7 +6,7 @@ import * as sns from 'aws-cdk-lib/aws-sns';
 import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
-import { BLOG_CONTENT_REPO, EnvConfig } from './config';
+import { alertsTopicName, BLOG_CONTENT_REPO, EnvConfig } from './config';
 
 export interface BlogPipelineTriggerStackProps extends cdk.StackProps {
   config: EnvConfig;
@@ -168,7 +168,7 @@ export class BlogPipelineTriggerStack extends cdk.Stack {
     // the Actions tab. Workflows publish here from `if: failure()` steps.
     // Email subscription is prod-only — sandbox has no scheduled workflows.
     const alertsTopic = new sns.Topic(this, 'AlertsTopic', {
-      topicName: `blog-pipeline-alerts-${deployEnv}`,
+      topicName: alertsTopicName(deployEnv),
       displayName: `Blog pipeline workflow failures (${deployEnv})`,
     });
     if (deployEnv === 'prod') {
@@ -180,7 +180,9 @@ export class BlogPipelineTriggerStack extends cdk.Stack {
     alertsTopic.grantPublish(promoteRole);
     // The blog-app scheduled-publish role (same account, different repo/stack)
     // also publishes failures here; its grant lives in blog-app's
-    // BlogGithubStack as an identity policy on this topic's ARN.
+    // BlogGithubStack as an identity policy on this topic's ARN. Likewise the
+    // review stack's image-submit Lambda warns here when fal credit runs low
+    // (PIPE-34), granted by ARN in that stack to avoid a dependency cycle.
 
     // ── Discovery ────────────────────────────────────────────────────────
     // The workflow file in blog-content hardcodes these values for clarity

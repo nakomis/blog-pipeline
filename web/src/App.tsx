@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth, type AuthContextProps } from 'react-oidc-context';
+import { fetchImageCredit, type ImageCredit } from './api/image-credit';
 import { displayStage, fetchPosts, type Post } from './api/posts';
 import { publishNow } from './api/post-detail';
+import CreditBanner from './components/CreditBanner';
 import PostCard from './components/PostCard';
 import { getConfig } from './config/config';
 import './App.css';
@@ -61,6 +63,7 @@ function Dashboard({ auth }: { auth: AuthContextProps }) {
   const [filter, setFilter] = useState<StageFilter>('all');
   const [publishing, setPublishing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [credit, setCredit] = useState<ImageCredit | null>(null);
 
   // The API Gateway Cognito authorizer is scopeless, so it validates the ID
   // token, not the access token.
@@ -72,6 +75,11 @@ function Dashboard({ auth }: { auth: AuthContextProps }) {
     }
     setLoading(true);
     setError(null);
+    // The credit banner is advisory (PIPE-34): a failed lookup just hides it
+    // and must never hold up or fail the posts load.
+    void fetchImageCredit(token)
+      .then(setCredit)
+      .catch(() => setCredit(null));
     try {
       setPosts(await fetchPosts(token));
     } catch (err) {
@@ -175,6 +183,8 @@ function Dashboard({ auth }: { auth: AuthContextProps }) {
           </button>
         </div>
       </header>
+
+      <CreditBanner credit={credit} />
 
       {error && (
         <p role="alert" className="app__error">

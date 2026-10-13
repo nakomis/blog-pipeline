@@ -3,6 +3,7 @@ import type {
   APIGatewayProxyResult,
 } from 'aws-lambda';
 import { imageCallback } from './image-callback';
+import { imageCredit } from './image-credit';
 import { listPosts } from './list-posts';
 import { postDetail } from './post-detail';
 import { postEdit, postDecision } from './post-actions';
@@ -16,6 +17,7 @@ import { corsHeaders, jsonResponse } from './http';
  *  - `POST /posts/{slug}/edit`      — edit a staged draft, optionally re-review;
  *  - `POST /posts/{slug}/decision`  — approve or reject a staged post;
  *  - `POST /publish-now`            — publish approved, due posts on demand (PIPE-14);
+ *  - `GET  /image-credit`           — the fal.ai credit snapshot for the banner (PIPE-34);
  *  - `POST /image-callback`         — fal.ai's image webhook (public, signed).
  *
  * One Lambda serves them all so the function stays warm and there is no second
@@ -43,6 +45,9 @@ export async function handler(
     }
     if (method === 'POST' && resource === '/publish-now') {
       return await publishNow(event);
+    }
+    if (method === 'GET' && resource === '/image-credit') {
+      return await imageCredit(event);
     }
     if (method === 'POST' && resource === '/image-callback') {
       return await imageCallback(event);
