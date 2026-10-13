@@ -147,3 +147,22 @@ test('original equals final on a single-iteration post', async () => {
   expect(body.iterations).toEqual([]);
   expect(body.images).toEqual([]);
 });
+
+test('after a re-review moves past an edit, shows the later reviewed draft', async () => {
+  // latestIteration marks the edit (3); the re-review redrafted on to 5.
+  ddbMock.on(GetCommand).resolves({
+    Item: { slug: 'p', title: 'P', status: 'failed', latestIteration: 3, reviewIteration: 5 },
+  });
+  s3Mock.on(HeadObjectCommand).resolves({});
+  s3Mock
+    .on(GetObjectCommand)
+    .resolves(draftBody(JSON.stringify({ reviews: [], gate: null })))
+    .on(GetObjectCommand, { Key: 'p/iteration-5/draft.md' })
+    .resolves(draftBody('# fifth'))
+    .on(GetObjectCommand, { Key: 'p/iteration-1/draft.md' })
+    .resolves(draftBody('# first'));
+
+  const body = JSON.parse((await postDetail(event('p'))).body);
+  expect(body.finalMarkdown).toBe('# fifth');
+  expect(body.iterations).toHaveLength(5);
+});

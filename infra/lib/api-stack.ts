@@ -310,6 +310,15 @@ export class ApiStack extends cdk.Stack {
       .addResource('decision')
       .addMethod('POST', apiIntegration, securedMethod);
 
+    // Edit and re-review a failed post in place (PIPE-36). Same protection as
+    // the other write actions.
+    const markdown = post.addResource('markdown');
+    markdown.addMethod('GET', apiIntegration, securedMethod);
+    markdown.addMethod('POST', apiIntegration, securedMethod);
+    post
+      .addResource('rereview')
+      .addMethod('POST', apiIntegration, securedMethod);
+
     // `/publish-now` — promote approved, due posts on demand (PIPE-14) rather
     // than waiting for the 04:00 UTC cron. Same protection as the other actions.
     api.root

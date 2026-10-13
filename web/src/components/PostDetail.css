@@ -79,6 +79,55 @@
   font-style: italic;
 }
 
+/* ── Failure reason and history (PIPE-36) ───────────────────────────── */
+.failure {
+  background: #3a1515;
+  border-left: 3px solid #e0556c;
+  color: #ffb3bd;
+  padding: 0.6rem 0.9rem;
+  border-radius: 4px;
+  margin: 0.75rem 0;
+}
+
+.failure__error {
+  margin: 0.35rem 0 0;
+  font-family: monospace;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+}
+
+.failure__hint {
+  margin: 0.35rem 0 0;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.failure-history {
+  background: var(--panel);
+  padding: 0.6rem 0.9rem;
+  border-radius: 4px;
+  margin: 0.75rem 0;
+}
+
+.failure-history summary {
+  cursor: pointer;
+  color: var(--heading);
+}
+
+.failure-history ol {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.failure-history li + li {
+  margin-top: 0.4rem;
+}
+
+.failure-history__meta {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 /* ── Badges ─────────────────────────────────────────────────────────── */
 .badge {
   display: inline-block;

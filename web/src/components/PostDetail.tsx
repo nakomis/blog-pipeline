@@ -7,11 +7,14 @@ import remarkGfm from 'remark-gfm';
 import {
   decidePost,
   editPost,
+  fetchFailedMarkdown,
   fetchPostDetail,
+  reReviewFailed,
+  saveFailedMarkdown,
   type AnnounceMode,
   type PostDetail as PostDetailData,
 } from '../api/post-detail';
-import { displayStage } from '../api/posts';
+import { displayStage, type FailureHistoryEntry, type Post } from '../api/posts';
 import './PostDetail.css';
 
 type Tab = 'article' | 'diff' | 'reviews' | 'images';
@@ -102,6 +105,65 @@ function ReviewsView({
   );
 }
 
+/** A plain-English reason for a review outcome or a rejection. */
+export function describeFailure(outcome: string | undefined): string {
+  switch (outcome) {
+    case 'capped':
+      return 'Reached the iteration cap without passing review.';
+    case 'quorum':
+      return 'Too few reviewers returned a verdict.';
+    case 'exception':
+      return 'The review loop hit an error.';
+    case 'rejected':
+      return 'Rejected in the bag.';
+    default:
+      return 'Review failed.';
+  }
+}
+
+function formatWhen(iso: string | undefined): string {
+  return iso ? new Date(iso).toLocaleString('en-GB') : 'unknown time';
+}
+
+/** Why a failed post failed, shown above the tabs (PIPE-36). */
+function FailureReason({ post }: { post: Post }) {
+  const outcome = post.reviewOutcome ?? (post.rejectedAt ? 'rejected' : undefined);
+  return (
+    <section className="failure" aria-label="Failure reason">
+      <strong>{describeFailure(outcome)}</strong>
+      {post.reviewError && <p className="failure__error">{post.reviewError}</p>}
+      <p className="failure__hint">
+        Edit the article and choose Re-review to send it back through the
+        review loop.
+      </p>
+    </section>
+  );
+}
+
+/** Failures cleared by earlier re-reviews — kept so the history stays visible. */
+function FailureHistory({ entries }: { entries: FailureHistoryEntry[] }) {
+  return (
+    <details className="failure-history">
+      <summary>Previous failures ({entries.length})</summary>
+      <ol>
+        {entries.map((entry, i) => (
+          <li key={`${entry.clearedAt}-${i}`}>
+            <strong>{describeFailure(entry.reviewOutcome)}</strong>{' '}
+            <span className="failure-history__meta">
+              {entry.iteration !== undefined && `Iteration ${entry.iteration}, `}
+              failed {formatWhen(entry.failedAt)}; re-reviewed from iteration{' '}
+              {entry.reReviewIteration} on {formatWhen(entry.clearedAt)}.
+            </span>
+            {entry.reviewError && (
+              <p className="failure__error">{entry.reviewError}</p>
+            )}
+          </li>
+        ))}
+      </ol>
+    </details>
+  );
+}
+
 /** The generated images. */
 function ImagesView({ images }: { images: PostDetailData['images'] }) {
   if (images.length === 0) {
@@ -164,6 +226,10 @@ function PostDetailInner({ idToken }: { idToken: string }) {
   }, [load]);
 
   const staged = data?.post.status === 'staged';
+  // A failed post is edited in place and re-reviewed (PIPE-36), through its
+  // own endpoints rather than the staged-post edit.
+  const failed = data?.post.status === 'failed';
+  const failureHistory = data?.post.failureHistory ?? [];
 
   // The stored Markdown links generated images by their pipeline-relative path
   // (`images/{slug}-N.png`), which 404s in the SPA. Swap those for the
@@ -194,6 +260,72 @@ function PostDetailInner({ idToken }: { idToken: string }) {
         reReview
           ? `Saved as iteration ${result.iteration}; re-review started.`
           : `Saved as iteration ${result.iteration}.`,
+      );
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const startEditing = async () => {
+    if (!failed) {
+      setEditing(true);
+      return;
+    }
+    if (!slug) {
+      return;
+    }
+    setBusy(true);
+    setNotice(null);
+    setError(null);
+    try {
+      const editable = await fetchFailedMarkdown(slug, idToken);
+      setDraft(editable.markdown);
+      setEditing(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveFailed = async () => {
+    if (!slug) {
+      return;
+    }
+    setBusy(true);
+    setNotice(null);
+    setError(null);
+    try {
+      const result = await saveFailedMarkdown(slug, draft, idToken);
+      setEditing(false);
+      setNotice(
+        `Saved as iteration ${result.iteration}. Choose Re-review when you are ready.`,
+      );
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reReview = async () => {
+    if (!slug) {
+      return;
+    }
+    setBusy(true);
+    setNotice(null);
+    setError(null);
+    try {
+      const result = await reReviewFailed(slug, draft, idToken);
+      setEditing(false);
+      setNotice(
+        result.alreadyStarted
+          ? `Re-review from iteration ${result.iteration} was already under way.`
+          : `Re-review started from iteration ${result.iteration}.`,
       );
       await load();
     } catch (err) {
@@ -299,6 +431,8 @@ function PostDetailInner({ idToken }: { idToken: string }) {
       </header>
 
       {notice && <p className="detail__notice">{notice}</p>}
+      {failed && <FailureReason post={data.post} />}
+      {failureHistory.length > 0 && <FailureHistory entries={failureHistory} />}
       {error && (
         <p role="alert" className="app__error">
           {error}
@@ -338,18 +472,29 @@ function PostDetailInner({ idToken }: { idToken: string }) {
                 type="button"
                 className="btn btn--primary"
                 disabled={busy}
-                onClick={() => void save(false)}
+                onClick={() => void (failed ? saveFailed() : save(false))}
               >
                 Save
               </button>
-              <button
-                type="button"
-                className="btn"
-                disabled={busy}
-                onClick={() => void save(true)}
-              >
-                Save & re-review
-              </button>
+              {failed ? (
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={busy || draft.trim().length === 0}
+                  onClick={() => void reReview()}
+                >
+                  Re-review
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={busy}
+                  onClick={() => void save(true)}
+                >
+                  Save & re-review
+                </button>
+              )}
               <button
                 type="button"
                 className="btn"
@@ -369,8 +514,8 @@ function PostDetailInner({ idToken }: { idToken: string }) {
               <button
                 type="button"
                 className="btn"
-                disabled={!staged}
-                onClick={() => setEditing(true)}
+                disabled={!(staged || failed) || busy}
+                onClick={() => void startEditing()}
               >
                 Edit
               </button>

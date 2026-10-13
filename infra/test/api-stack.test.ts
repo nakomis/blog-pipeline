@@ -101,6 +101,22 @@ describe('ApiStack', () => {
     expect(Object.keys(secured).length).toBeGreaterThanOrEqual(4);
   });
 
+  test('the failed-post edit routes exist and are secured (PIPE-36)', () => {
+    for (const part of ['markdown', 'rereview']) {
+      template.hasResourceProperties('AWS::ApiGateway::Resource', {
+        PathPart: part,
+      });
+    }
+    const secured = template.findResources('AWS::ApiGateway::Method', {
+      Properties: {
+        ApiKeyRequired: true,
+        AuthorizationType: 'COGNITO_USER_POOLS',
+      },
+    });
+    // The four PIPE-4 routes, publish-now, plus GET/POST markdown and rereview.
+    expect(Object.keys(secured).length).toBeGreaterThanOrEqual(8);
+  });
+
   test('grants the Lambda permission to start the review state machine', () => {
     template.hasResourceProperties('AWS::IAM::Policy', {
       PolicyDocument: Match.objectLike({

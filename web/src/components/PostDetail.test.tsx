@@ -7,6 +7,9 @@ import {
   fetchPostDetail,
   editPost,
   decidePost,
+  fetchFailedMarkdown,
+  saveFailedMarkdown,
+  reReviewFailed,
   type PostDetail as PostDetailData,
 } from '../api/post-detail';
 
@@ -17,6 +20,9 @@ const mockedUseAuth = vi.mocked(useAuth);
 const mockedFetch = vi.mocked(fetchPostDetail);
 const mockedEdit = vi.mocked(editPost);
 const mockedDecide = vi.mocked(decidePost);
+const mockedFetchFailed = vi.mocked(fetchFailedMarkdown);
+const mockedSaveFailed = vi.mocked(saveFailedMarkdown);
+const mockedReReview = vi.mocked(reReviewFailed);
 
 function authState(overrides: Partial<AuthContextProps>): AuthContextProps {
   return {
@@ -314,6 +320,214 @@ describe('PostDetail — actions', () => {
     await screen.findByText('My Post');
 
     expect(screen.getByRole('button', { name: 'Approve' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled();
+  });
+});
+
+describe('PostDetail — failed posts (PIPE-36)', () => {
+  const failedDetail: PostDetailData = {
+    ...sampleDetail,
+    post: {
+      ...sampleDetail.post,
+      status: 'failed',
+      reviewOutcome: 'exception',
+      reviewError: 'Bedrock throttled',
+    },
+  };
+
+  async function openFailed(detail: PostDetailData = failedDetail) {
+    mockedFetch.mockResolvedValue(detail);
+    mockedUseAuth.mockReturnValue(signedIn());
+    renderDetail();
+    await screen.findByText('My Post');
+  }
+
+  test('shows the failure reason and enables Edit but not Approve', async () => {
+    await openFailed();
+
+    const reason = screen.getByLabelText('Failure reason');
+    expect(reason).toHaveTextContent('The review loop hit an error.');
+    expect(reason).toHaveTextContent('Bedrock throttled');
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeDisabled();
+  });
+
+  test('describes a human rejection', async () => {
+    await openFailed({
+      ...sampleDetail,
+      post: { ...sampleDetail.post, status: 'failed', rejectedAt: '2026-10-01T00:00:00Z' },
+    });
+    expect(screen.getByLabelText('Failure reason')).toHaveTextContent(
+      'Rejected in the bag.',
+    );
+  });
+
+  test('Edit loads the Markdown, Save stores it and keeps the post failed', async () => {
+    mockedFetchFailed.mockResolvedValue({
+      slug: 'my-post',
+      iteration: 4,
+      markdown: '# Latest draft',
+      pendingEdit: false,
+    });
+    mockedSaveFailed.mockResolvedValue({
+      slug: 'my-post',
+      iteration: 5,
+      status: 'failed',
+      pendingEdit: true,
+    });
+    await openFailed();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    const editor = await screen.findByLabelText('Edit article Markdown');
+    expect(editor).toHaveValue('# Latest draft');
+    expect(mockedFetchFailed).toHaveBeenCalledWith('my-post', 'tok');
+    expect(
+      screen.queryByRole('button', { name: 'Save & re-review' }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.change(editor, { target: { value: '# Fixed' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(mockedSaveFailed).toHaveBeenCalledWith('my-post', '# Fixed', 'tok'),
+    );
+    expect(await screen.findByText(/Saved as iteration 5/)).toBeInTheDocument();
+    expect(mockedEdit).not.toHaveBeenCalled();
+    expect(mockedReReview).not.toHaveBeenCalled();
+  });
+
+  test('Re-review submits the edited Markdown and reloads', async () => {
+    mockedFetchFailed.mockResolvedValue({
+      slug: 'my-post',
+      iteration: 4,
+      markdown: '# Latest draft',
+      pendingEdit: false,
+    });
+    mockedReReview.mockResolvedValue({
+      slug: 'my-post',
+      iteration: 5,
+      status: 'reviewing',
+      alreadyStarted: false,
+    });
+    await openFailed();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(await screen.findByLabelText('Edit article Markdown'), {
+      target: { value: '# Better' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Re-review' }));
+
+    await waitFor(() =>
+      expect(mockedReReview).toHaveBeenCalledWith('my-post', '# Better', 'tok'),
+    );
+    expect(
+      await screen.findByText('Re-review started from iteration 5.'),
+    ).toBeInTheDocument();
+    // Initial load plus the reload after re-review.
+    expect(mockedFetch).toHaveBeenCalledTimes(2);
+  });
+
+  test('says so when the re-review was already under way', async () => {
+    mockedFetchFailed.mockResolvedValue({
+      slug: 'my-post',
+      iteration: 5,
+      markdown: '# Saved',
+      pendingEdit: true,
+    });
+    mockedReReview.mockResolvedValue({
+      slug: 'my-post',
+      iteration: 5,
+      status: 'reviewing',
+      alreadyStarted: true,
+    });
+    await openFailed();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    await screen.findByLabelText('Edit article Markdown');
+    fireEvent.click(screen.getByRole('button', { name: 'Re-review' }));
+
+    expect(await screen.findByText(/already under way/)).toBeInTheDocument();
+  });
+
+  test('Re-review is disabled for blank Markdown', async () => {
+    mockedFetchFailed.mockResolvedValue({
+      slug: 'my-post',
+      iteration: 4,
+      markdown: '# Latest draft',
+      pendingEdit: false,
+    });
+    await openFailed();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(await screen.findByLabelText('Edit article Markdown'), {
+      target: { value: '   ' },
+    });
+    expect(screen.getByRole('button', { name: 'Re-review' })).toBeDisabled();
+  });
+
+  test('surfaces an error loading the Markdown', async () => {
+    mockedFetchFailed.mockRejectedValue(new Error('HTTP 409'));
+    await openFailed();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('HTTP 409');
+    expect(screen.queryByLabelText('Edit article Markdown')).not.toBeInTheDocument();
+  });
+
+  test('surfaces save and re-review errors', async () => {
+    mockedFetchFailed.mockResolvedValue({
+      slug: 'my-post',
+      iteration: 4,
+      markdown: '# Latest draft',
+      pendingEdit: false,
+    });
+    mockedSaveFailed.mockRejectedValue(new Error('save broke'));
+    mockedReReview.mockRejectedValue(new Error('rereview broke'));
+    await openFailed();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    await screen.findByLabelText('Edit article Markdown');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('save broke');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Re-review' }));
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('rereview broke'),
+    );
+  });
+
+  test('keeps earlier failures visible after a re-review', async () => {
+    await openFailed({
+      ...sampleDetail,
+      post: {
+        ...sampleDetail.post,
+        status: 'reviewing',
+        failureHistory: [
+          {
+            reviewOutcome: 'capped',
+            iteration: 4,
+            failedAt: '2026-10-01T09:00:00Z',
+            clearedAt: '2026-10-02T09:00:00Z',
+            reReviewIteration: 5,
+          },
+          {
+            reviewOutcome: 'quorum',
+            reviewError: 'only 2 of 4 reviewers',
+            clearedAt: '2026-10-03T09:00:00Z',
+            reReviewIteration: 9,
+          },
+        ],
+      },
+    });
+
+    expect(screen.queryByLabelText('Failure reason')).not.toBeInTheDocument();
+    expect(screen.getByText('Previous failures (2)')).toBeInTheDocument();
+    expect(
+      screen.getByText('Reached the iteration cap without passing review.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('only 2 of 4 reviewers')).toBeInTheDocument();
+    expect(screen.getByText(/re-reviewed from iteration\s+9/)).toBeInTheDocument();
+    // Not failed any more, so not editable here.
     expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled();
   });
 });

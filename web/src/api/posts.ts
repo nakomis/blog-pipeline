@@ -19,6 +19,27 @@ export interface Post {
   publishabilityScore?: number;
   /** The blog go-live date (YYYY-MM-DD), stamped when the post is promoted. */
   publishDate?: string;
+  /** Why the review loop ended: `pass`, `capped`, `quorum` or `exception`. */
+  reviewOutcome?: string;
+  /** Detail for an `exception` or `quorum` outcome. */
+  reviewError?: string;
+  /** Set when a human rejected the post in the bag. */
+  rejectedAt?: string;
+  /** Failures cleared by a re-review, oldest first (PIPE-36). */
+  failureHistory?: FailureHistoryEntry[];
+}
+
+/** One past failure, kept after a re-review clears it (PIPE-36). */
+export interface FailureHistoryEntry {
+  /** `capped`, `quorum`, `exception`, or `rejected` for a human rejection. */
+  reviewOutcome: string;
+  reviewError?: string;
+  /** The last iteration reviewed before the failure. */
+  iteration?: number;
+  failedAt?: string;
+  clearedAt: string;
+  /** The iteration the re-review started from. */
+  reReviewIteration: number;
 }
 
 /**
