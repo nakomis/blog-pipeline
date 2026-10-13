@@ -134,6 +134,29 @@ The review loop (PIPE-3) is an AWS Step Functions state machine,
 Drafts and per-iteration reviewer results are stored in the
 `blog-pipeline-drafts-{env}` S3 bucket.
 
+### Editing and re-reviewing a failed post (PIPE-36)
+
+A `failed` post — whether the loop gave up or it was rejected in the bag — can
+be fixed in place from its detail page. **Edit** opens the latest draft in a
+text editor; **Save** writes it as the next draft iteration and leaves the post
+`failed` (saving again overwrites that same iteration); **Re-review** saves the
+editor's contents and restarts the review loop from that iteration, moving the
+post back to `reviewing`.
+
+| Route | Purpose |
+|---|---|
+| `GET /posts/{slug}/markdown` | the Markdown to edit — the saved edit if any, else the latest draft |
+| `POST /posts/{slug}/markdown` | save an edit (`{"markdown": "…"}`) |
+| `POST /posts/{slug}/rereview` | optionally save (`{"markdown": "…"}`), then re-review |
+
+All three answer `409` unless the post is `failed`, and carry the same Cognito +
+API-key protection as the other bag actions. A re-review clears the post's
+`reviewOutcome` / `reviewError` but first appends them to `failureHistory`,
+which the bag shows as "Previous failures". The re-trigger is idempotent: a
+retry of a re-review that has already started returns `200` with
+`alreadyStarted: true`, and the Step Functions execution is named
+`rereview-{slug}-{iteration}`, so it cannot start twice.
+
 ### Manual prerequisites
 
 All four reviewers need API keys. `BlogPipelineReviewStack` creates four SSM

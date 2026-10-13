@@ -1,4 +1,11 @@
-import { fetchPostDetail, editPost, decidePost } from './post-detail';
+import {
+  fetchPostDetail,
+  editPost,
+  decidePost,
+  fetchFailedMarkdown,
+  saveFailedMarkdown,
+  reReviewFailed,
+} from './post-detail';
 
 vi.mock('../config/config', () => ({
   getConfig: () => ({
@@ -82,5 +89,56 @@ describe('decidePost', () => {
   test('throws on failure', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }));
     await expect(decidePost('a', 'reject', 'tok')).rejects.toThrow(/HTTP 500/);
+  });
+});
+
+describe('failed-post editing (PIPE-36)', () => {
+  test('fetchFailedMarkdown GETs the markdown route', async () => {
+    const body = { slug: 'a', iteration: 4, markdown: '# a', pendingEdit: false };
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => body });
+    vi.stubGlobal('fetch', fetchMock);
+
+    expect(await fetchFailedMarkdown('a', 'tok')).toEqual(body);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.example.test/posts/a/markdown',
+      { headers: { Authorization: 'Bearer tok' } },
+    );
+  });
+
+  test('saveFailedMarkdown POSTs the markdown', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ slug: 'a', iteration: 5, status: 'failed', pendingEdit: true }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    expect((await saveFailedMarkdown('a', '# b', 'tok')).iteration).toBe(5);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://api.example.test/posts/a/markdown');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ markdown: '# b' });
+  });
+
+  test('reReviewFailed POSTs to the rereview route', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ slug: 'a', iteration: 5, status: 'reviewing', alreadyStarted: false }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    expect((await reReviewFailed('a', '# b', 'tok')).status).toBe('reviewing');
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://api.example.test/posts/a/rereview');
+    expect(JSON.parse(init.body)).toEqual({ markdown: '# b' });
+    expect(init.headers).toMatchObject({ Authorization: 'Bearer tok' });
+  });
+
+  test.each([
+    ['fetchFailedMarkdown', () => fetchFailedMarkdown('a', 'tok')],
+    ['saveFailedMarkdown', () => saveFailedMarkdown('a', 'x', 'tok')],
+    ['reReviewFailed', () => reReviewFailed('a', 'x', 'tok')],
+  ])('%s throws on a non-ok response', async (_name, call) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 409 }));
+    await expect(call()).rejects.toThrow(/HTTP 409/);
   });
 });

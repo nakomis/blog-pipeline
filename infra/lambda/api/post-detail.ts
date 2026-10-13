@@ -66,12 +66,15 @@ export async function postDetail(
     return jsonResponse(404, { message: `No post '${slug}'` }, cors);
   }
 
-  // Drafts are 1-indexed. `??` does not catch a stored `0` (the value
-  // `reviewIteration` briefly holds as a post enters review), so coerce any
-  // falsy/NaN value to 1 and never go below it.
+  // Drafts are 1-indexed; coerce a stored `0` (the value `reviewIteration`
+  // briefly holds as a post enters review) or NaN up to 1. Take the higher of
+  // the two counters: `latestIteration` marks a human edit, but a re-review
+  // started from that edit (PIPE-4, PIPE-36) moves on through redrafts that
+  // only `reviewIteration` records.
   const requestedIteration = Math.max(
     1,
-    Number(Item.latestIteration ?? Item.reviewIteration ?? 1) || 1,
+    Number(Item.latestIteration) || 1,
+    Number(Item.reviewIteration) || 1,
   );
   // Mid-review, the requested iteration's draft may not be written yet; fall
   // back to the latest iteration that actually has a draft (iteration 1 always

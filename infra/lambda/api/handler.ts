@@ -2,6 +2,11 @@ import type {
   APIGatewayProxyEvent,
   APIGatewayProxyResult,
 } from 'aws-lambda';
+import {
+  getFailedMarkdown,
+  reReviewFailed,
+  saveFailedMarkdown,
+} from './failed-edit';
 import { imageCallback } from './image-callback';
 import { imageCredit } from './image-credit';
 import { listPosts } from './list-posts';
@@ -16,6 +21,9 @@ import { corsHeaders, jsonResponse } from './http';
  *  - `GET  /posts/{slug}`           — the detail bundle for the bag (PIPE-4);
  *  - `POST /posts/{slug}/edit`      — edit a staged draft, optionally re-review;
  *  - `POST /posts/{slug}/decision`  — approve or reject a staged post;
+ *  - `GET  /posts/{slug}/markdown`  — a failed post's Markdown, for editing (PIPE-36);
+ *  - `POST /posts/{slug}/markdown`  — save an edit to a failed post (PIPE-36);
+ *  - `POST /posts/{slug}/rereview`  — send a failed post back for review (PIPE-36);
  *  - `POST /publish-now`            — publish approved, due posts on demand (PIPE-14);
  *  - `GET  /image-credit`           — the fal.ai credit snapshot for the banner (PIPE-34);
  *  - `POST /image-callback`         — fal.ai's image webhook (public, signed).
@@ -42,6 +50,15 @@ export async function handler(
     }
     if (method === 'POST' && resource === '/posts/{slug}/decision') {
       return await postDecision(event);
+    }
+    if (method === 'GET' && resource === '/posts/{slug}/markdown') {
+      return await getFailedMarkdown(event);
+    }
+    if (method === 'POST' && resource === '/posts/{slug}/markdown') {
+      return await saveFailedMarkdown(event);
+    }
+    if (method === 'POST' && resource === '/posts/{slug}/rereview') {
+      return await reReviewFailed(event);
     }
     if (method === 'POST' && resource === '/publish-now') {
       return await publishNow(event);

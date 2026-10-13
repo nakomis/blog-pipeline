@@ -16,6 +16,11 @@ jest.mock('../../../lambda/api/post-actions', () => ({
   postEdit: jest.fn().mockResolvedValue({ statusCode: 200, body: 'edit' }),
   postDecision: jest.fn().mockResolvedValue({ statusCode: 200, body: 'decision' }),
 }));
+jest.mock('../../../lambda/api/failed-edit', () => ({
+  getFailedMarkdown: jest.fn().mockResolvedValue({ statusCode: 200, body: 'md' }),
+  saveFailedMarkdown: jest.fn().mockResolvedValue({ statusCode: 200, body: 'save' }),
+  reReviewFailed: jest.fn().mockResolvedValue({ statusCode: 200, body: 'rereview' }),
+}));
 jest.mock('../../../lambda/api/publish-now', () => ({
   publishNow: jest.fn().mockResolvedValue({ statusCode: 202, body: 'published' }),
 }));
@@ -27,6 +32,11 @@ import { imageCredit } from '../../../lambda/api/image-credit';
 import { postDetail } from '../../../lambda/api/post-detail';
 import { postEdit, postDecision } from '../../../lambda/api/post-actions';
 import { publishNow } from '../../../lambda/api/publish-now';
+import {
+  getFailedMarkdown,
+  reReviewFailed,
+  saveFailedMarkdown,
+} from '../../../lambda/api/failed-edit';
 
 const mockList = listPosts as jest.Mock;
 const mockCallback = imageCallback as jest.Mock;
@@ -106,4 +116,15 @@ test('a thrown route error becomes a 500 carrying CORS headers', async () => {
   expect(res.headers?.['access-control-allow-origin']).toBe('https://app.example');
   expect(JSON.parse(res.body)).toEqual({ message: 'boom' });
   delete process.env.ALLOWED_ORIGINS;
+});
+
+test('routes the failed-post edit routes to failed-edit (PIPE-36)', async () => {
+  expect((await handler(event('GET', '/posts/{slug}/markdown'))).body).toBe('md');
+  expect((await handler(event('POST', '/posts/{slug}/markdown'))).body).toBe('save');
+  expect((await handler(event('POST', '/posts/{slug}/rereview'))).body).toBe(
+    'rereview',
+  );
+  expect(getFailedMarkdown).toHaveBeenCalledTimes(1);
+  expect(saveFailedMarkdown).toHaveBeenCalledTimes(1);
+  expect(reReviewFailed).toHaveBeenCalledTimes(1);
 });

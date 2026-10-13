@@ -99,6 +99,94 @@ export async function editPost(
   return (await response.json()) as EditResult;
 }
 
+/** A failed post's editable Markdown (PIPE-36). */
+export interface FailedMarkdown {
+  slug: string;
+  iteration: number;
+  markdown: string;
+  /** True if this is a saved edit that has not been reviewed yet. */
+  pendingEdit: boolean;
+}
+
+/** Fetches a failed post's Markdown for editing in place. */
+export async function fetchFailedMarkdown(
+  slug: string,
+  idToken: string,
+): Promise<FailedMarkdown> {
+  const { apiUrl } = getConfig();
+  const response = await fetch(
+    `${apiUrl}/posts/${encodeURIComponent(slug)}/markdown`,
+    { headers: authHeaders(idToken) },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to load Markdown for editing (HTTP ${response.status})`);
+  }
+  return (await response.json()) as FailedMarkdown;
+}
+
+export interface SaveFailedResult {
+  slug: string;
+  iteration: number;
+  status: string;
+  pendingEdit: boolean;
+}
+
+/**
+ * Saves an edit to a failed post. The post stays failed; repeated saves
+ * overwrite the same pending iteration until it is re-reviewed.
+ */
+export async function saveFailedMarkdown(
+  slug: string,
+  markdown: string,
+  idToken: string,
+): Promise<SaveFailedResult> {
+  const { apiUrl } = getConfig();
+  const response = await fetch(
+    `${apiUrl}/posts/${encodeURIComponent(slug)}/markdown`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(idToken), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ markdown }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to save edit (HTTP ${response.status})`);
+  }
+  return (await response.json()) as SaveFailedResult;
+}
+
+export interface ReReviewResult {
+  slug: string;
+  iteration: number;
+  status: string;
+  /** True if this request repeated a re-review that had already started. */
+  alreadyStarted: boolean;
+}
+
+/**
+ * Sends a failed post back into the review loop with the given Markdown,
+ * clearing its failure reason (the history is kept). Safe to retry.
+ */
+export async function reReviewFailed(
+  slug: string,
+  markdown: string,
+  idToken: string,
+): Promise<ReReviewResult> {
+  const { apiUrl } = getConfig();
+  const response = await fetch(
+    `${apiUrl}/posts/${encodeURIComponent(slug)}/rereview`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(idToken), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ markdown }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to start re-review (HTTP ${response.status})`);
+  }
+  return (await response.json()) as ReReviewResult;
+}
+
 export interface DecisionResult {
   slug: string;
   decision: 'approve' | 'reject';
