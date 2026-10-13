@@ -157,7 +157,23 @@ export const IMAGE = {
   /** Output dimensions — 3:2 landscape, matching the blog's hero images. */
   width: 1216,
   height: 832,
+  /**
+   * Credit early warning (PIPE-34), all in USD. `image-submit` warns over the
+   * alerts topic once the remaining fal credit drops below `warnThresholdUsd`.
+   * Without a fal admin key the remaining credit is estimated as
+   * `monthlyBudgetUsd − generations this month × costPerImageUsd`.
+   */
+  credit: {
+    warnThresholdUsd: 5,
+    monthlyBudgetUsd: 25,
+    costPerImageUsd: 0.06,
+  },
 } as const;
+
+/** Name of the failure-alerts SNS topic (PIPE-15) — fixed so ARNs derive from it. */
+export function alertsTopicName(deployEnv: DeployEnv): string {
+  return `blog-pipeline-alerts-${deployEnv}`;
+}
 
 /** A reviewer provider id — one of `REVIEW.providers`. */
 export type ReviewProvider = (typeof REVIEW.providers)[number];

@@ -61,8 +61,9 @@ describe('BlogPipelineReviewStack', () => {
 
   test('creates the four external reviewer SSM parameters', () => {
     const template = synth(sandboxConfig);
-    // 4 reviewer + 1 state-machine ARN + 1 fal image key (PIPE-6).
-    template.resourceCountIs('AWS::SSM::Parameter', 6);
+    // 4 reviewer + 1 state-machine ARN + 1 fal image key (PIPE-6)
+    // + fal admin key and credit state (PIPE-34).
+    template.resourceCountIs('AWS::SSM::Parameter', 8);
     for (const provider of ['azure', 'gemini', 'anthropic', 'grok']) {
       template.hasResourceProperties('AWS::SSM::Parameter', {
         Name: `/blog-pipeline/sandbox/reviewer/${provider}`,
@@ -89,6 +90,42 @@ describe('BlogPipelineReviewStack', () => {
           IMAGE_JOBS_TABLE_NAME: Match.anyValue(),
         }),
       },
+    });
+  });
+
+  test('wires the fal credit warning into image-submit (PIPE-34)', () => {
+    const template = synth(sandboxConfig);
+    template.hasResourceProperties('AWS::SSM::Parameter', {
+      Name: '/blog-pipeline/sandbox/image/fal-credit-state',
+      Type: 'String',
+      Value: '{}',
+    });
+    template.hasResourceProperties('AWS::SSM::Parameter', {
+      Name: '/blog-pipeline/sandbox/image/fal-admin',
+      Type: 'String',
+    });
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'blog-pipeline-review-image-submit-sandbox',
+      Environment: {
+        Variables: Match.objectLike({
+          FAL_CREDIT_STATE_PARAM_NAME: Match.anyValue(),
+          FAL_ADMIN_PARAM_NAME: Match.anyValue(),
+          ALERTS_TOPIC_ARN: Match.anyValue(),
+          FAL_CREDIT_WARN_THRESHOLD_USD: '5',
+          FAL_MONTHLY_BUDGET_USD: '25',
+          FAL_COST_PER_IMAGE_USD: '0.06',
+        }),
+      },
+    });
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Sid: 'PublishFalCreditWarning',
+            Action: 'sns:Publish',
+          }),
+        ]),
+      }),
     });
   });
 

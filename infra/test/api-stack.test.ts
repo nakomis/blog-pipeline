@@ -132,6 +132,30 @@ describe('ApiStack', () => {
     });
   });
 
+  test('the Lambda can read the fal credit snapshot (PIPE-34)', () => {
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: {
+        Variables: Match.objectLike({
+          FAL_CREDIT_STATE_PARAM_NAME:
+            '/blog-pipeline/sandbox/image/fal-credit-state',
+        }),
+      },
+    });
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Sid: 'ReadFalCreditState',
+            Action: 'ssm:GetParameter',
+          }),
+        ]),
+      }),
+    });
+    template.hasResourceProperties('AWS::ApiGateway::Resource', {
+      PathPart: 'image-credit',
+    });
+  });
+
   test('CloudFront allows all methods so the POST callback reaches the origin', () => {
     template.hasResourceProperties('AWS::CloudFront::Distribution', {
       DistributionConfig: Match.objectLike({

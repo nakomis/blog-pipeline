@@ -6,6 +6,9 @@ jest.mock('../../../lambda/api/list-posts', () => ({
 jest.mock('../../../lambda/api/image-callback', () => ({
   imageCallback: jest.fn().mockResolvedValue({ statusCode: 200, body: 'cb' }),
 }));
+jest.mock('../../../lambda/api/image-credit', () => ({
+  imageCredit: jest.fn().mockResolvedValue({ statusCode: 200, body: 'credit' }),
+}));
 jest.mock('../../../lambda/api/post-detail', () => ({
   postDetail: jest.fn().mockResolvedValue({ statusCode: 200, body: 'detail' }),
 }));
@@ -20,6 +23,7 @@ jest.mock('../../../lambda/api/publish-now', () => ({
 import { handler } from '../../../lambda/api/handler';
 import { listPosts } from '../../../lambda/api/list-posts';
 import { imageCallback } from '../../../lambda/api/image-callback';
+import { imageCredit } from '../../../lambda/api/image-credit';
 import { postDetail } from '../../../lambda/api/post-detail';
 import { postEdit, postDecision } from '../../../lambda/api/post-actions';
 import { publishNow } from '../../../lambda/api/publish-now';
@@ -77,6 +81,12 @@ test('routes POST /publish-now to publishNow', async () => {
   expect(res.statusCode).toBe(202);
   expect(mockPublishNow).toHaveBeenCalled();
   expect(mockDecision).not.toHaveBeenCalled();
+});
+
+test('routes GET /image-credit to imageCredit (PIPE-34)', async () => {
+  const res = await handler(event('GET', '/image-credit'));
+  expect(res.body).toBe('credit');
+  expect(imageCredit as jest.Mock).toHaveBeenCalled();
 });
 
 test('returns 404 for an unknown route', async () => {

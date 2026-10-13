@@ -262,6 +262,32 @@ export class ApiStack extends cdk.Stack {
       },
     );
     githubDispatchSecret.grantRead(apiHandler);
+
+    // `GET /image-credit` (PIPE-34) reads the fal credit snapshot that the
+    // review stack's image-submit Lambda records. Referenced by its fixed name
+    // rather than a construct, so the API takes no new cross-stack export.
+    const falCreditStateParamName = `${ssmPrefix}/image/fal-credit-state`;
+    apiHandler.addEnvironment(
+      'FAL_CREDIT_STATE_PARAM_NAME',
+      falCreditStateParamName,
+    );
+    apiHandler.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: 'ReadFalCreditState',
+        actions: ['ssm:GetParameter'],
+        resources: [
+          cdk.Arn.format(
+            {
+              service: 'ssm',
+              resource: 'parameter',
+              // Parameter ARNs drop the name's leading slash.
+              resourceName: falCreditStateParamName.slice(1),
+            },
+            this,
+          ),
+        ],
+      }),
+    );
     apiHandler.addEnvironment(
       'GITHUB_DISPATCH_SECRET_ARN',
       githubDispatchSecret.secretArn,
@@ -315,6 +341,12 @@ export class ApiStack extends cdk.Stack {
     api.root
       .addResource('publish-now')
       .addMethod('POST', apiIntegration, securedMethod);
+
+    // `/image-credit` — the fal credit snapshot behind the dashboard's
+    // low-credit banner (PIPE-34).
+    api.root
+      .addResource('image-credit')
+      .addMethod('GET', apiIntegration, securedMethod);
 
     // fal.ai's image webhook (PIPE-6). Public and key-less: fal cannot present
     // a Cognito token or the CloudFront-injected API key, and an API Gateway
