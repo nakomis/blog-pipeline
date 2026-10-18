@@ -53,8 +53,11 @@ describe('applyLinkSuggestions', () => {
     ['anchor now in a heading', '# the Cabal\n', 'inside a heading'],
     ['anchor now in code', 'use `the Cabal`', 'inside a heading'],
     ['target already linked', `the Cabal and ${URL_A}`, 'already links'],
+    ['target linked over http with a trailing slash', 'the Cabal and [x](http://blog.nakomis.com/2026-07-29-cabal/)', 'already links'],
+    ['target linked root-relative', 'the Cabal and [x](/2026-07-29-cabal)', 'already links'],
+    ['anchor edited into a longer word', 'Cabalistic ideas', 'middle of a word'],
   ])('skips, never forces: %s', (_name, md, reason) => {
-    const out = applyLinkSuggestions(md, [link('a', 'the Cabal', URL_A)]);
+    const out = applyLinkSuggestions(md, [link('a', md.startsWith('Cabalistic') ? 'Cabal' : 'the Cabal', URL_A)]);
     expect(out.markdown).toBe(md);
     expect(out.applied).toEqual([]);
     expect(out.skipped[0].reason).toContain(reason);

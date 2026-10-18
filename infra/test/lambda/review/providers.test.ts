@@ -3,6 +3,7 @@ import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import {
   reviewerModel,
   redraftModel,
+  suggestModel,
 } from '../../../lambda/review/providers';
 import { requireEnv, readParameterJson } from '../../../lambda/review/runtime';
 
@@ -102,5 +103,21 @@ describe('runtime helpers', () => {
   test('readParameterJson throws when the parameter has no value', async () => {
     ssmMock.on(GetParameterCommand).resolves({});
     await expect(readParameterJson('empty')).rejects.toThrow(/no value/);
+  });
+});
+
+describe('suggestModel (PIPE-38)', () => {
+  test('reads the reviewer’s Anthropic key and builds Claude Haiku on the direct API', async () => {
+    process.env.ANTHROPIC_PARAM_NAME = '/blog-pipeline/test/reviewer/anthropic';
+    ssmMock
+      .on(GetParameterCommand, { Name: '/blog-pipeline/test/reviewer/anthropic' })
+      .resolves({ Parameter: { Value: JSON.stringify({ apiKey: 'k' }) } });
+    const model = await suggestModel();
+    expect(model).toMatchObject({ modelId: 'claude-haiku-5-5', provider: expect.stringContaining('anthropic') });
+  });
+
+  test('fails clearly when the key parameter is not configured', async () => {
+    delete process.env.ANTHROPIC_PARAM_NAME;
+    await expect(suggestModel()).rejects.toThrow('ANTHROPIC_PARAM_NAME');
   });
 });

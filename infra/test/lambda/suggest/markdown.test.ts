@@ -1,5 +1,7 @@
 import {
   contextAround,
+  crossesWordBoundary,
+  linksTo,
   occurrences,
   overlapsRange,
   paragraphIndex,
@@ -163,5 +165,44 @@ describe('windowsOf', () => {
     expect(windowsOf(body, 700, 80).join(' ')).not.toContain('secret');
     const many = Array.from({ length: 10 }, () => 'y'.repeat(600)).join('\n\n');
     expect(windowsOf(many, 700, 3)).toHaveLength(3);
+  });
+});
+
+describe('crossesWordBoundary', () => {
+  test('flags a range that starts or ends inside a word', () => {
+    expect(crossesWordBoundary('Cabalistic', 0, 5)).toBe(true);
+    expect(crossesWordBoundary('theCabal', 3, 8)).toBe(true);
+  });
+  test('allows whole words, punctuation and the ends of the text', () => {
+    expect(crossesWordBoundary('the Cabal, again', 4, 9)).toBe(false);
+    expect(crossesWordBoundary('Cabal', 0, 5)).toBe(false);
+    expect(crossesWordBoundary('“Cabal”', 1, 6)).toBe(false);
+  });
+});
+
+describe('linksTo', () => {
+  const url = 'https://blog.nakomis.com/2026-07-29-cabal';
+
+  test.each([
+    ['the exact URL in a link', `see [x](${url})`],
+    ['http rather than https', 'see [x](http://blog.nakomis.com/2026-07-29-cabal)'],
+    ['a trailing slash', `see [x](${url}/)`],
+    ['different case', 'see [x](https://Blog.Nakomis.com/2026-07-29-CABAL)'],
+    ['a fragment or query', `see [x](${url}#section)`],
+    ['a root-relative link', 'see [x](/2026-07-29-cabal)'],
+    ['a bare URL', `see ${url} now`],
+    ['an autolink', `see <${url}>`],
+  ])('detects %s', (_name, body) => {
+    expect(linksTo(body, url)).toBe(true);
+  });
+
+  test.each([
+    ['another post', 'see [x](https://blog.nakomis.com/2026-07-30-other)'],
+    ['a longer slug sharing the prefix', 'see [x](https://blog.nakomis.com/2026-07-29-cabal-two)'],
+    ['a different host', 'see [x](https://example.test/2026-07-29-cabal)'],
+    ['a relative link to something else', 'see [x](/images/cabal.png)'],
+    ['no links', 'just the Cabal'],
+  ])('does not mistake %s', (_name, body) => {
+    expect(linksTo(body, url)).toBe(false);
   });
 });

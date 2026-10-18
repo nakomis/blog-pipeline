@@ -197,6 +197,8 @@ describe('BlogPipelineReviewStack', () => {
           Variables: Match.objectLike({
             PRIVATE_BUCKET: 'nakom.is-private-sandbox',
             EMBED_REGION: 'us-east-1',
+            // Haiku via the direct Anthropic API, with the reviewer's key.
+            ANTHROPIC_PARAM_NAME: Match.anyValue(),
             GITHUB_OWNERS: '["nakomis"]',
             POSTS_TABLE_NAME: Match.anyValue(),
             DRAFTS_BUCKET: Match.anyValue(),
@@ -235,6 +237,24 @@ describe('BlogPipelineReviewStack', () => {
       });
     });
 
+    test('reads the Anthropic key parameter and has no Bedrock model permission beyond Titan', () => {
+      const template = synth(prodConfig);
+      const policies = template.findResources('AWS::IAM::Policy');
+      const forFn = Object.values(policies).filter((p) =>
+        JSON.stringify(p.Properties.Roles).includes('SuggestLinksFn'),
+      );
+      expect(forFn.length).toBeGreaterThan(0);
+      const statements = forFn.flatMap((p) => p.Properties.PolicyDocument.Statement);
+      const json = JSON.stringify(statements);
+      expect(json).toContain('ssm:GetParameter');
+      expect(json).toContain('AnthropicReviewerParam');
+      expect(json).not.toContain('kms:Decrypt');
+      // Titan only: no wildcard foundation-model or inference-profile access.
+      expect(json).not.toContain('inference-profile');
+      expect(json).not.toContain('foundation-model/*');
+      expect(json).toContain('foundation-model/amazon.titan-embed-text-v2:0');
+    });
+
     test('runs SuggestLinks between a gate pass and SetOutcomePass', () => {
       const states = definition(synth(sandboxConfig)).States;
       const pass = states.DecideLoop.Choices?.find((c) => c.Next === 'SuggestLinks');
@@ -243,12 +263,26 @@ describe('BlogPipelineReviewStack', () => {
       expect(states.SetOutcomePass.Next).toBe('ReviewComplete');
     });
 
+    test('the failure marker writes an error summary for this iteration to the posts table', () => {
+      const states = definition(synth(sandboxConfig)).States as Record<string, Record<string, unknown>>;
+      expect(states.MarkSuggestFailed.Resource).toContain('dynamodb:updateItem');
+      const params = JSON.stringify(states.MarkSuggestFailed.Parameters);
+      expect(params).toContain('suggestionsSummary');
+      expect(params).toContain('$.suggestError.Error');
+      expect(params).toContain('"S":"error"');
+    });
+
     test('a failure or timeout still stages the post and never reaches HandleException', () => {
       const states = definition(synth(sandboxConfig)).States;
+      // A crash or timeout records an error marker on the row, then stages.
       expect(states.SuggestLinks.Catch).toEqual([
-        expect.objectContaining({ Next: 'SetOutcomePass' }),
+        expect.objectContaining({ Next: 'MarkSuggestFailed' }),
       ]);
       expect(states.SuggestLinks.TimeoutSeconds).toBe(150);
+      expect(states.MarkSuggestFailed.Next).toBe('SetOutcomePass');
+      expect(states.MarkSuggestFailed.Catch).toEqual([
+        expect.objectContaining({ Next: 'SetOutcomePass' }),
+      ]);
       expect(JSON.stringify(states.SuggestLinks.Catch)).not.toContain('HandleException');
     });
   });

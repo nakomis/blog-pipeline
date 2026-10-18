@@ -1,6 +1,6 @@
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
 import type { LanguageModel } from 'ai';
-import { LINKS, REVIEW } from '../../../lib/config';
+import { REVIEW } from '../../../lib/config';
 
 /**
  * Bedrock models — the Nova Pro reviewer and the Claude Sonnet redrafter.
@@ -19,9 +19,4 @@ export async function reviewerModel(): Promise<LanguageModel> {
 /** The redraft model — Claude Sonnet on Bedrock. */
 export function redraftModel(): LanguageModel {
   return bedrock(REVIEW.redraftModel);
-}
-
-/** The link/repo suggestion model — Claude Haiku on Bedrock (PIPE-38). */
-export function suggestModel(): LanguageModel {
-  return bedrock(LINKS.model);
 }

@@ -4,7 +4,7 @@ import {
   GetCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { draftKey, getDraft, putDraft } from '../review/drafts';
+import { draftKey, getDraftWithEtag, putDraftIfMatch } from '../review/drafts';
 import { requireEnv } from '../review/runtime';
 
 /**
@@ -145,9 +145,18 @@ export interface ApplyPlaceholdersDeps {
   ): Promise<{ status?: string; reviewIteration?: number } | undefined>;
   /** True once the image's PNG has landed in S3. */
   pngExists(slug: string, index: number): Promise<boolean>;
-  readDraft(key: string): Promise<string>;
-  writeDraft(key: string, md: string): Promise<void>;
+  /** The draft and its ETag, so the write can be conditional. */
+  readDraft(key: string): Promise<{ body: string; etag: string | undefined }>;
+  /**
+   * Write only if the draft is still the version read (S3 `If-Match`). False
+   * means something else changed it first — at approval, the accepted link
+   * suggestions (PIPE-38) — so the caller re-reads and rewrites on top.
+   */
+  writeDraft(key: string, md: string, etag: string | undefined): Promise<boolean>;
 }
+
+/** Read-modify-write attempts before giving up on a draft that keeps changing. */
+const MAX_WRITE_ATTEMPTS = 3;
 
 export interface ApplyPlaceholdersResult {
   /** Indices rewritten on this run. */
@@ -184,27 +193,35 @@ export async function applyPlaceholders(
   }
 
   const key = draftKey(slug, post.reviewIteration ?? 1);
-  const md = await deps.readDraft(key);
-  const placeholders = parseImagePlaceholders(md, slug);
-  if (placeholders.length === 0) {
-    return { applied: [], reason: 'nothing-to-do' };
-  }
 
-  const available = new Set<number>();
-  for (const placeholder of placeholders) {
-    if (await deps.pngExists(slug, placeholder.index)) {
-      available.add(placeholder.index);
+  // Read-modify-write guarded by the draft's ETag. Another writer (approval
+  // applying accepted links, PIPE-38) may change the draft between our read and
+  // write; then we re-read and apply the image rewrite on top of their version.
+  for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
+    const { body: md, etag } = await deps.readDraft(key);
+    const placeholders = parseImagePlaceholders(md, slug);
+    if (placeholders.length === 0) {
+      return { applied: [], reason: 'nothing-to-do' };
+    }
+
+    const available = new Set<number>();
+    for (const placeholder of placeholders) {
+      if (await deps.pngExists(slug, placeholder.index)) {
+        available.add(placeholder.index);
+      }
+    }
+    if (available.size === 0) {
+      return { applied: [], reason: 'nothing-to-do' };
+    }
+
+    const rewritten = rewritePlaceholders(md, slug, available);
+    if (rewritten === md || (await deps.writeDraft(key, rewritten, etag))) {
+      return { applied: [...available].sort((a, b) => a - b) };
     }
   }
-  if (available.size === 0) {
-    return { applied: [], reason: 'nothing-to-do' };
-  }
-
-  const rewritten = rewritePlaceholders(md, slug, available);
-  if (rewritten !== md) {
-    await deps.writeDraft(key, rewritten);
-  }
-  return { applied: [...available].sort((a, b) => a - b) };
+  throw new Error(
+    `Draft ${key} kept changing; gave up rewriting its image placeholders`,
+  );
 }
 
 /** Wire `applyPlaceholders` against the real DynamoDB and S3 clients. */
@@ -234,7 +251,7 @@ export function defaultApplyDeps(): ApplyPlaceholdersDeps {
         throw err;
       }
     },
-    readDraft: getDraft,
-    writeDraft: putDraft,
+    readDraft: getDraftWithEtag,
+    writeDraft: putDraftIfMatch,
   };
 }

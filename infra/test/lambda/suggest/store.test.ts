@@ -79,3 +79,20 @@ test('getCurrentSuggestions needs a summary naming an iteration', async () => {
   });
   await expect(getCurrentSuggestions('p', summaryOf(base))).resolves.toMatchObject({ slug: 'p' });
 });
+
+test('a failed step with no file yields a placeholder so the bag says it failed', async () => {
+  s3Mock.on(HeadObjectCommand).rejects(Object.assign(new Error('nf'), { name: 'NotFound' }));
+  const out = await getCurrentSuggestions('p', {
+    iteration: 3, status: 'error', skippedReason: 'step failed: States.Timeout',
+    links: 0, repos: 0, undecided: 0, generatedAt: 'then',
+  });
+  expect(out).toMatchObject({
+    slug: 'p', iteration: 3, status: 'error', skippedReason: 'step failed: States.Timeout',
+    generatedAt: 'then', links: [], repos: [],
+  });
+});
+
+test('an ok summary whose file is missing yields nothing, not a placeholder', async () => {
+  s3Mock.on(HeadObjectCommand).rejects(Object.assign(new Error('nf'), { name: 'NotFound' }));
+  await expect(getCurrentSuggestions('p', summaryOf(base))).resolves.toBeNull();
+});

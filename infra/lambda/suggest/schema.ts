@@ -9,30 +9,33 @@ import { z } from 'zod';
  * mirrors them in `web/src/api/post-detail.ts`.
  */
 
+// Deliberately no `.max()` / `.min()` on strings and lists: a model answer that
+// is merely too long or too short would fail validation and discard *every*
+// suggestion. Limits are enforced after parsing, by `normalisePicks`.
 export const LinkPick = z.object({
   /** Exact phrase quoted from the post. */
-  anchor_text: z.string().min(2),
+  anchor_text: z.string(),
   /** Must be one of the candidate slugs we supplied. */
   target_slug: z.string(),
   /** The model's own check that the passage refers to the target's subject. */
   same_subject: z.boolean(),
   /** Shown to Martin on hover or focus in the bag. */
-  reason: z.string().min(1).max(300),
+  reason: z.string().default(''),
 });
 
 export const RepoPick = z.object({
   /** `owner/name`, must be on the list we supplied. */
   full_name: z.string(),
   /** An exact sentence from the post that shows it discusses the repo. */
-  evidence_quote: z.string().min(2),
-  reason: z.string().min(1).max(300),
+  evidence_quote: z.string(),
+  reason: z.string().default(''),
 });
 
 export const Picks = z.object({
   // A model told to "return an empty list" sometimes omits the key instead
   // (seen with Haiku 4.5 in the eval); an absent list means none.
-  links: z.array(LinkPick).max(10).default([]),
-  repos: z.array(RepoPick).max(5).default([]),
+  links: z.array(LinkPick).default([]),
+  repos: z.array(RepoPick).default([]),
 });
 
 export type LinkPick = z.infer<typeof LinkPick>;

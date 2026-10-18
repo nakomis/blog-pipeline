@@ -1,4 +1,4 @@
-import { repoId, linkId, validateLinks, validateRepos } from '../../../lambda/suggest/validate';
+import { repoId, linkId, normalisePicks, validateLinks, validateRepos } from '../../../lambda/suggest/validate';
 import { Picks } from '../../../lambda/suggest/schema';
 import type { Candidate, LinkPick, RepoInfo, RepoPick } from '../../../lambda/suggest/schema';
 
@@ -72,6 +72,18 @@ describe('validateLinks', () => {
     ['existing link', 'see [the Cabal](https://x.test)', pick('the Cabal'), 'inside'],
     ['shortcode', '{{image prompt="the Cabal"}}', pick('the Cabal'), 'inside'],
     ['target already linked', `x the Cabal ${CABAL.url}`, pick('the Cabal'), 'already links'],
+    [
+      'target already linked over http with a trailing slash',
+      'x the Cabal [t](http://blog.nakomis.com/2026-07-29-three-of-them-didnt-know-what-they-were/)',
+      pick('the Cabal'),
+      'already links',
+    ],
+    [
+      'target already linked root-relative',
+      'x the Cabal [t](/2026-07-29-three-of-them-didnt-know-what-they-were)',
+      pick('the Cabal'),
+      'already links',
+    ],
   ])('drops: %s', (_name, body, p, reason) => {
     const { accepted, dropped } = run(body, [p]);
     expect(accepted).toEqual([]);
@@ -256,7 +268,56 @@ describe('Picks schema', () => {
     expect(Picks.parse({})).toEqual({ links: [], repos: [] });
   });
 
-  test('still rejects malformed picks', () => {
+  test('still rejects structurally malformed picks', () => {
     expect(() => Picks.parse({ links: [{ anchor_text: 'x' }] })).toThrow();
+  });
+
+  test('does not reject an answer for being long, short or over the counts', () => {
+    const many = Array.from({ length: 30 }, () => ({
+      anchor_text: 'a', target_slug: 's', same_subject: true, reason: 'y'.repeat(900),
+    }));
+    expect(Picks.parse({ links: many }).links).toHaveLength(30);
+    expect(Picks.parse({ links: [{ anchor_text: '', target_slug: 's', same_subject: true }] }).links[0].reason).toBe('');
+  });
+});
+
+describe('normalisePicks', () => {
+  const link = (n: number, reason = 'r') => ({
+    anchor_text: `anchor ${n}`, target_slug: 's', same_subject: true, reason,
+  });
+  const repo = (n: number, reason = 'r') => ({
+    full_name: `o/r${n}`, evidence_quote: 'q', reason,
+  });
+
+  test('trims an oversized answer to the limits and reports the excess', () => {
+    const picks = {
+      links: Array.from({ length: 14 }, (_, i) => link(i)),
+      repos: Array.from({ length: 8 }, (_, i) => repo(i)),
+    };
+    const out = normalisePicks(picks, { maxLinks: 10, maxRepos: 5 });
+    expect(out.picks.links).toHaveLength(10);
+    expect(out.picks.repos).toHaveLength(5);
+    expect(out.picks.links[9].anchor_text).toBe('anchor 9');
+    expect(out.dropped).toHaveLength(7);
+    expect(out.dropped[0]).toMatchObject({ kind: 'link', value: 'anchor 10' });
+    expect(out.dropped[4].reason).toContain('more than 5 repositories');
+  });
+
+  test('truncates a long reason and fills a missing one', () => {
+    const out = normalisePicks(
+      { links: [link(1, 'x'.repeat(500)), link(2, '   ')], repos: [repo(1, '')] },
+      { maxLinks: 10, maxRepos: 5 },
+    );
+    expect(out.picks.links[0].reason).toHaveLength(300);
+    expect(out.picks.links[0].reason.endsWith('…')).toBe(true);
+    expect(out.picks.links[1].reason).toBe('No reason given.');
+    expect(out.picks.repos[0].reason).toBe('No reason given.');
+  });
+
+  test('leaves a within-limits answer alone', () => {
+    const picks = { links: [link(1)], repos: [repo(1)] };
+    const out = normalisePicks(picks, { maxLinks: 10, maxRepos: 5 });
+    expect(out.picks).toEqual(picks);
+    expect(out.dropped).toEqual([]);
   });
 });

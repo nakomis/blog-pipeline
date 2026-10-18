@@ -35,16 +35,17 @@ describe('SUGGEST_SYSTEM_PROMPT', () => {
 
 describe('buildSuggestPrompt', () => {
   test('includes the post, candidates with evidence and the repo list', () => {
-    const out = buildSuggestPrompt({ body: 'POST BODY', mode: 'evidence', candidates: [cand], repos: [repo], maxLinks: 2 });
+    const out = buildSuggestPrompt({ body: 'POST BODY', mode: 'evidence', candidates: [cand], repos: [repo], maxLinks: 2, maxRepos: 5 });
     expect(out).toContain('POST BODY');
     expect(out).toContain('slug: 2026-07-29-cabal');
     expect(out).toContain('matched passage in this post: draft passage');
     expect(out).toContain('nakomis/mcps: MCP servers');
     expect(out).toContain('at most 2 links');
+    expect(out).toContain('at most 5 repositories');
   });
 
   test('catalogue mode omits evidence and warns to be strict', () => {
-    const out = buildSuggestPrompt({ body: 'b', mode: 'catalogue', candidates: [cand], repos: [], maxLinks: 1 });
+    const out = buildSuggestPrompt({ body: 'b', mode: 'catalogue', candidates: [cand], repos: [], maxLinks: 1, maxRepos: 5 });
     expect(out).not.toContain('matched passage');
     expect(out).toContain('no retrieval signal');
     expect(out).toContain('at most 1 link.');
@@ -52,7 +53,7 @@ describe('buildSuggestPrompt', () => {
   });
 
   test('says so when there are no candidates', () => {
-    const out = buildSuggestPrompt({ body: 'b', mode: 'none', candidates: [], repos: [repo], maxLinks: 1 });
+    const out = buildSuggestPrompt({ body: 'b', mode: 'none', candidates: [], repos: [repo], maxLinks: 1, maxRepos: 5 });
     expect(out).toContain('Return an empty "links" list');
   });
 });

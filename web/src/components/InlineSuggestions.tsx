@@ -1,4 +1,4 @@
-import { createContext, useContext, useId } from 'react';
+import { createContext, useContext, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { LinkSuggestion, SuggestionDecision } from '../api/post-detail';
 
@@ -152,6 +152,11 @@ export function SuggestionMark({
 }: Record<string, unknown> & { children?: ReactNode }) {
   const ctx = useContext(SuggestionContext);
   const popoverId = useId();
+  // Escape closes the popover (it reopens on the next hover or focus).
+  const [dismissed, setDismissed] = useState(false);
+  const wrapper = useRef<HTMLSpanElement>(null);
+  // Moving focus back to the text on Escape must not reopen the popover.
+  const closing = useRef(false);
   const id = props['data-suggestion-id'] as string | undefined;
   const link = id ? ctx?.byId.get(id) : undefined;
   if (!ctx || !link) {
@@ -160,7 +165,27 @@ export function SuggestionMark({
   const accepted = link.decision === 'accepted';
 
   return (
-    <span className={`sugg sugg--${link.decision}`}>
+    <span
+      ref={wrapper}
+      className={`sugg sugg--${link.decision}${dismissed ? ' sugg--dismissed' : ''}`}
+      onMouseEnter={() => setDismissed(false)}
+      onFocus={() => {
+        if (!closing.current) {
+          setDismissed(false);
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          setDismissed(true);
+          // Hand focus back to the highlighted text, outside the popover.
+          closing.current = true;
+          wrapper.current
+            ?.querySelector<HTMLElement>('.sugg__mark')
+            ?.focus();
+          closing.current = false;
+        }
+      }}
+    >
       {accepted ? (
         <a
           className="sugg__mark sugg__mark--accepted"
@@ -176,7 +201,12 @@ export function SuggestionMark({
           {children}
         </mark>
       )}
-      <span role="tooltip" id={popoverId} className="sugg__pop">
+      <span
+        role="group"
+        aria-label={accepted ? 'Applied link suggestion' : 'Link suggestion'}
+        id={popoverId}
+        className="sugg__pop"
+      >
         <strong className="sugg__title">
           {accepted ? 'Link applied on approval' : 'Suggested link'}
         </strong>

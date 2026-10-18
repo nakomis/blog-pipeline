@@ -99,8 +99,9 @@ describe('generateSuggestions', () => {
     expect(out.links).toHaveLength(1);
     expect(out.links[0]).toMatchObject({ targetUrl: CABAL_URL, decision: 'pending' });
     expect(out.repos[0]).toMatchObject({ fullName: 'nakomis/mcps', url: MCPS.url });
-    expect(out.dropped.some((d) => d.reason.includes('candidate list'))).toBe(true);
-    expect(out.models.chat).toBe('eu.anthropic.claude-haiku-5-5');
+    // A short post allows one link, so the second proposal is trimmed, not fatal.
+    expect(out.dropped.some((d) => d.reason.includes('more than 1 links'))).toBe(true);
+    expect(out.models.chat).toBe('claude-haiku-5-5');
   });
 
   test('the model sees only repos the post names and earlier-dated candidates', async () => {
@@ -164,6 +165,36 @@ describe('generateSuggestions', () => {
     const deps = makeDeps();
     const out = await generateSuggestions({ ...EVENT, markdown: 'No frontmatter. The Cabal.' }, deps);
     expect(out.status).toBe('ok');
+  });
+});
+
+describe('an oversized model answer', () => {
+  test('keeps what fits instead of discarding every suggestion', async () => {
+    const md = `---\ntitle: "A post"\ndate: "2026-10-18"\n---\n\nI asked the Cabal what it thought.\n`;
+    const picks = {
+      links: [
+        { anchor_text: 'the Cabal', target_slug: CABAL_SLUG, same_subject: true, reason: 'z'.repeat(900) },
+        ...Array.from({ length: 12 }, (_, i) => ({
+          anchor_text: `filler ${i}`, target_slug: CABAL_SLUG, same_subject: true, reason: 'x',
+        })),
+      ],
+      repos: Array.from({ length: 9 }, (_, i) => ({
+        full_name: `nakomis/none${i}`, evidence_quote: 'q', reason: 'x',
+      })),
+    };
+    const deps = makeDeps({ pick: jest.fn().mockResolvedValue(picks) });
+    const out = await generateSuggestions({ ...EVENT, markdown: md }, deps);
+    expect(out.status).toBe('ok');
+    expect(out.links).toHaveLength(1);
+    expect(out.links[0].reason).toHaveLength(300);
+    expect(out.dropped.filter((d) => d.reason.includes('more than')).length).toBeGreaterThanOrEqual(2);
+  });
+
+  test('never asks for more than the configured number of links, however long the post', async () => {
+    const long = `---\ndate: "2026-10-18"\n---\n\n${'word '.repeat(6000)}`;
+    const deps = makeDeps();
+    await generateSuggestions({ ...EVENT, markdown: long }, deps);
+    expect((deps.pick as jest.Mock).mock.calls[0][1]).toContain('at most 10 links');
   });
 });
 
@@ -231,7 +262,7 @@ describe('defaultDeps wiring', () => {
     jest.resetModules();
     const generateObject = jest.fn().mockResolvedValue({ object: { links: [], repos: [] } });
     jest.doMock('ai', () => ({ generateObject }));
-    jest.doMock('../../../lambda/review/providers', () => ({ suggestModel: () => ({ id: 'haiku' }) }));
+    jest.doMock('../../../lambda/review/providers', () => ({ suggestModel: async () => ({ id: 'haiku' }) }));
     const getSummary = jest.fn().mockResolvedValueOnce(undefined).mockResolvedValueOnce({ iteration: 4 });
     const getSuggestions = jest.fn().mockResolvedValue({ slug: 'p' });
     jest.doMock('../../../lambda/suggest/store', () => ({

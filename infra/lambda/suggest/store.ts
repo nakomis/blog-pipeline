@@ -1,5 +1,6 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { LINKS } from '../../lib/config';
 import { draftExists, getDraft, putReviews } from '../review/drafts';
 import { requireEnv } from '../review/runtime';
 import { undecidedCount } from './apply';
@@ -65,6 +66,11 @@ export async function getSummary(slug: string): Promise<SuggestionsSummary | und
 /**
  * The suggestions currently attached to a post: the file at the iteration the
  * row's summary names (a bag edit adds later iterations but does not move it).
+ *
+ * If the summary records that the step did not succeed for that iteration but
+ * left no file (the Lambda crashed or timed out, so the state machine wrote the
+ * marker), a placeholder is returned so the bag says the step failed instead of
+ * showing nothing or an earlier iteration's suggestions.
  */
 export async function getCurrentSuggestions(
   slug: string,
@@ -73,5 +79,23 @@ export async function getCurrentSuggestions(
   if (!summary || !Number.isInteger(summary.iteration)) {
     return null;
   }
-  return getSuggestions(slug, summary.iteration);
+  const stored = await getSuggestions(slug, summary.iteration);
+  if (stored) {
+    return stored;
+  }
+  if (summary.status === 'ok') {
+    return null;
+  }
+  return {
+    version: 1,
+    slug,
+    iteration: summary.iteration,
+    generatedAt: summary.generatedAt,
+    status: summary.status,
+    ...(summary.skippedReason ? { skippedReason: summary.skippedReason } : {}),
+    models: { chat: LINKS.model, embed: LINKS.embedModel },
+    links: [],
+    repos: [],
+    dropped: [],
+  };
 }

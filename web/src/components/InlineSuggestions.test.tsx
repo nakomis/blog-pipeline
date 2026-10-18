@@ -51,9 +51,36 @@ describe('inline highlighting', () => {
     const mark = screen.getByText('the Cabal');
     expect(mark.tagName).toBe('MARK');
     expect(mark).toHaveAttribute('tabindex', '0');
-    expect(screen.getByRole('tooltip')).toHaveTextContent('It refers to the panel review.');
-    expect(screen.getByRole('tooltip')).toHaveTextContent('Three of Seven AIs');
-    expect(mark).toHaveAttribute('aria-describedby', screen.getByRole('tooltip').id);
+    expect(screen.getByRole('group', { name: /link suggestion/i })).toHaveTextContent('It refers to the panel review.');
+    expect(screen.getByRole('group', { name: /link suggestion/i })).toHaveTextContent('Three of Seven AIs');
+    expect(mark).toHaveAttribute('aria-describedby', screen.getByRole('group', { name: /link suggestion/i }).id);
+  });
+
+  test('the popover is a labelled group, not a tooltip, since it holds buttons', () => {
+    renderArticle('I asked the Cabal.', [link()]);
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(screen.getByRole('group', { name: 'Link suggestion' })).toContainElement(
+      screen.getByRole('button', { name: 'Accept' }),
+    );
+  });
+
+  test('Escape closes the popover, returns focus to the text, and hover reopens it', () => {
+    renderArticle('I asked the Cabal.', [link()]);
+    const mark = screen.getByText('the Cabal');
+    const wrapper = mark.closest('.sugg') as HTMLElement;
+    screen.getByRole('button', { name: 'Accept' }).focus();
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Accept' }), { key: 'Escape' });
+    expect(wrapper).toHaveClass('sugg--dismissed');
+    expect(mark).toHaveFocus();
+    fireEvent.mouseEnter(wrapper);
+    expect(wrapper).not.toHaveClass('sugg--dismissed');
+  });
+
+  test('other keys leave the popover open', () => {
+    renderArticle('I asked the Cabal.', [link()]);
+    const wrapper = screen.getByText('the Cabal').closest('.sugg') as HTMLElement;
+    fireEvent.keyDown(wrapper, { key: 'Tab' });
+    expect(wrapper).not.toHaveClass('sugg--dismissed');
   });
 
   test('accept and reject report the choice', () => {
@@ -69,21 +96,21 @@ describe('inline highlighting', () => {
     const anchor = screen.getByRole('link', { name: 'the Cabal' });
     expect(anchor).toHaveAttribute('href', 'https://blog.nakomis.com/2026-07-29-cabal');
     expect(anchor).toHaveAttribute('rel', 'noopener noreferrer');
-    expect(screen.getByRole('tooltip')).toHaveTextContent('Link applied on approval');
+    expect(screen.getByRole('group', { name: /link suggestion/i })).toHaveTextContent('Link applied on approval');
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     expect(onDecide).toHaveBeenCalledWith('l1', 'pending');
   });
 
   test('a rejected suggestion loses its highlight', () => {
     renderArticle('I asked the Cabal.', [link({ decision: 'rejected' })]);
-    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(screen.queryByRole('group', { name: /link suggestion/i })).toBeNull();
     expect(screen.getByText(/I asked the Cabal/)).toBeInTheDocument();
   });
 
   test('read-only when the post is no longer staged', () => {
     renderArticle('I asked the Cabal.', [link()], vi.fn(), false);
     expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull();
-    expect(screen.getByRole('tooltip')).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: /link suggestion/i })).toBeInTheDocument();
   });
 
   test.each([
@@ -93,7 +120,7 @@ describe('inline highlighting', () => {
     ['a code block', '```\nthe Cabal\n```'],
   ])('never highlights inside %s', (_name, md) => {
     renderArticle(md, [link({ anchorText: md.includes('rises') ? 'The Cabal' : 'the Cabal' })]);
-    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(screen.queryByRole('group', { name: /link suggestion/i })).toBeNull();
   });
 
   test('highlights several anchors in one paragraph and keeps the text between', () => {
@@ -101,7 +128,7 @@ describe('inline highlighting', () => {
       link(),
       link({ id: 'l2', anchorText: 'the panel', targetTitle: 'Other' }),
     ]);
-    expect(screen.getAllByRole('tooltip')).toHaveLength(2);
+    expect(screen.getAllByRole('group', { name: /link suggestion/i })).toHaveLength(2);
     expect(screen.getByText(/then/)).toBeInTheDocument();
   });
 
@@ -110,7 +137,7 @@ describe('inline highlighting', () => {
       link({ anchorText: 'the Cabal panel' }),
       link({ id: 'l2', anchorText: 'Cabal panel' }),
     ]);
-    expect(screen.getAllByRole('tooltip')).toHaveLength(1);
+    expect(screen.getAllByRole('group', { name: /link suggestion/i })).toHaveLength(1);
   });
 
   test('a mark with no matching suggestion renders as plain text', () => {

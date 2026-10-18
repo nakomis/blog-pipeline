@@ -11,7 +11,7 @@ human approval before publication.
 - **Review engine** — cloud LLM fan-out (Bedrock + Azure + Gemini + Anthropic); the
   review loop is orchestrated by AWS Step Functions
 - **Re-draft model** — Claude Sonnet
-- **Link/repo suggestions (PIPE-38)** — Claude Haiku on Bedrock chooses from candidates built by code
+- **Link/repo suggestions (PIPE-38)** — Claude Haiku (direct Anthropic API) chooses from candidates built by code
   (embeddings from blog-app's index); accepted in the bag, applied at approval
 - **Loop control** — deterministic, no LLM: re-loop if the minimum publishability
   score is below threshold or any reviewer raises a blocker, capped at 4 iterations

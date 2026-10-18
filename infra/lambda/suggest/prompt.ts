@@ -38,8 +38,8 @@ Rules for each link:
 - target_slug is copied exactly from the candidate list.
 - At most one link per target post, at most one per paragraph, and no more than
   the maximum stated in the request.
-- reason is one short, plain sentence for the author, saying what in the post
-  refers to the earlier post.
+- reason is required for every link: one short, plain sentence for the author,
+  saying what in the post refers to the earlier post.
 
 REPOSITORIES
 
@@ -47,8 +47,8 @@ Suggest a repository for the post's "repos" list only when the post discusses
 it: it describes what the repository does or how it works, or is clearly about
 it. A passing mention in a list of unrelated things is not enough. Choose only
 from the list of repositories given, and quote in evidence_quote the exact
-sentence from the post that shows it. Do not suggest a repository already
-listed.
+sentence from the post that shows it, and give a one-sentence reason. Do not
+suggest a repository already listed.
 
 Write in British English. Return only the JSON object the schema asks for.
 `.trim();
@@ -59,6 +59,7 @@ export interface PromptInput {
   candidates: Candidate[];
   repos: RepoInfo[];
   maxLinks: number;
+  maxRepos: number;
 }
 
 function describeCandidate(c: Candidate, withEvidence: boolean): string {
@@ -101,6 +102,11 @@ export function buildSuggestPrompt(input: PromptInput): string {
     );
   } else {
     sections.push('## Public repositories the post names\n\nNone. Return an empty "repos" list.');
+  }
+  if (input.repos.length > 0) {
+    sections.push(
+      `Suggest at most ${input.maxRepos} repositor${input.maxRepos === 1 ? 'y' : 'ies'}.`,
+    );
   }
   return sections.join('\n\n');
 }

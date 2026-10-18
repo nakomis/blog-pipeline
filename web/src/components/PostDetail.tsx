@@ -277,6 +277,9 @@ function PostDetailInner({ idToken }: { idToken: string }) {
   // Choices are saved one at a time, in order, so quick clicks cannot overwrite
   // each other on the server.
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
+  // Set when a queued save failed (and was rolled back), so approval can refuse
+  // to go ahead on choices the server never recorded.
+  const suggestionSaveFailed = useRef(false);
 
   const setLocalDecisions = (changes: Record<string, SuggestionDecision>) => {
     setData((prev) => {
@@ -312,6 +315,7 @@ function PostDetailInner({ idToken }: { idToken: string }) {
       try {
         await setSuggestionDecisions(slug, changes, idToken);
       } catch (err) {
+        suggestionSaveFailed.current = true;
         setLocalDecisions(before);
         setError(err instanceof Error ? err.message : String(err));
       }
@@ -431,6 +435,18 @@ function PostDetailInner({ idToken }: { idToken: string }) {
     setNotice(null);
     setError(null);
     try {
+      if (decision === 'approve') {
+        // Approval applies what the server has recorded, so let every pending
+        // accept / reject reach it first; and do not approve if one was lost.
+        await saveQueue.current;
+        if (suggestionSaveFailed.current) {
+          suggestionSaveFailed.current = false;
+          setError(
+            'A suggestion choice could not be saved, so the post was not approved. Check the suggestions and approve again.',
+          );
+          return;
+        }
+      }
       const result = await decidePost(slug, decision, idToken, announceBluesky);
       const applied = result.applied;
       const appliedText =

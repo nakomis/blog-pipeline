@@ -23,7 +23,7 @@ import {
   putSummary,
   summaryOf,
 } from './store';
-import { validateLinks, validateRepos } from './validate';
+import { normalisePicks, validateLinks, validateRepos } from './validate';
 
 /**
  * The `SuggestLinks` step (PIPE-38).
@@ -66,7 +66,7 @@ export function defaultDeps(): Deps {
       listPublicRepos(githubOwners(), { excludeForks: LINKS.excludeForks }),
     async pick(system, prompt) {
       const { object } = await generateObject({
-        model: suggestModel(),
+        model: await suggestModel(),
         schema: Picks,
         system,
         prompt,
@@ -171,8 +171,11 @@ export async function generateSuggestions(
   }
 
   // ── One Haiku call, then code decides what survives ───────────────────────
-  const maxLinks = Math.max(1, Math.floor(wordCount(body) / LINKS.wordsPerLink));
-  const picks = await deps.pick(
+  const maxLinks = Math.min(
+    LINKS.maxLinks,
+    Math.max(1, Math.floor(wordCount(body) / LINKS.wordsPerLink)),
+  );
+  const answer = await deps.pick(
     SUGGEST_SYSTEM_PROMPT,
     buildSuggestPrompt({
       body,
@@ -180,8 +183,16 @@ export async function generateSuggestions(
       candidates: chosen.candidates,
       repos: named,
       maxLinks,
+      maxRepos: LINKS.maxRepos,
     }),
   );
+  // Limits are enforced here, by trimming, so an over-long answer loses only its
+  // excess instead of failing validation and discarding everything.
+  const { picks, dropped: trimmed } = normalisePicks(answer, {
+    maxLinks,
+    maxRepos: LINKS.maxRepos,
+  });
+  result.dropped.push(...trimmed);
 
   const links = validateLinks({
     picks: picks.links,

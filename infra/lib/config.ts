@@ -187,8 +187,12 @@ export const IMAGE = {
  * `blog-app/scripts/ingest-blog.py`, which writes the index this step reads.
  */
 export const LINKS = {
-  /** Claude Haiku on Bedrock (EU inference profile), like `REVIEW.redraftModel`. */
-  model: 'eu.anthropic.claude-haiku-5-5',
+  /**
+   * Claude Haiku via the direct Anthropic API, with the same key as the Opus
+   * reviewer (`${ssmPrefix}/reviewer/anthropic`). Not Bedrock: AWS refuses
+   * `anthropic.claude-haiku-5-5` for these accounts.
+   */
+  model: 'claude-haiku-5-5',
   /** Titan Embed Text v2 — must match the model that built the index. */
   embedModel: 'amazon.titan-embed-text-v2:0',
   /** Dimensions of the index vectors — a different length means an incompatible index. */
@@ -220,6 +224,8 @@ export const LINKS = {
   catalogueFallback: true,
   /** At most one new link per this many words (minimum one per post). */
   wordsPerLink: 300,
+  /** Upper bound on link suggestions per post, whatever its length. */
+  maxLinks: 10,
   /** Upper bound on repo suggestions per post. */
   maxRepos: 5,
   /** Forks are rarely what a post is about. */

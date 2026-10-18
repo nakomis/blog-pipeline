@@ -1,4 +1,6 @@
 import {
+  crossesWordBoundary,
+  linksTo,
   occurrences,
   overlapsRange,
   protectedRanges,
@@ -43,9 +45,11 @@ export function applyLinkSuggestions(markdown: string, links: LinkToApply[]): Ap
             ? 'the anchor text is no longer in the post'
             : 'the anchor text now appears more than once',
       });
+    } else if (crossesWordBoundary(body, found[0], found[0] + link.anchorText.length)) {
+      skipped.push({ id: link.id, reason: 'the anchor text now starts or ends in the middle of a word' });
     } else if (overlapsRange(protectedAt, found[0], found[0] + link.anchorText.length)) {
       skipped.push({ id: link.id, reason: 'the anchor text is now inside a heading, code, link or shortcode' });
-    } else if (body.includes(link.targetUrl)) {
+    } else if (linksTo(body, link.targetUrl)) {
       skipped.push({ id: link.id, reason: 'the post already links to that target' });
     } else {
       const start = found[0];

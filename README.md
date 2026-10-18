@@ -178,8 +178,10 @@ DecideLoop --pass--> SuggestLinks --(success, error or timeout)--> SetOutcomePas
   posts dated on or before this one are eligible, never the post itself. The
   top 8 above `LINKS.retrieval.floor` go to the model; if fewer than 3 clear it,
   the whole eligible catalogue is offered instead.
-- **Haiku only chooses.** `eu.anthropic.claude-haiku-5-5` on Bedrock picks from
-  those lists and never writes a URL. The prompt insists on a genuine reference
+- **Haiku only chooses.** `claude-haiku-5-5`, through the direct Anthropic API
+  with the reviewer's key (`/blog-pipeline/{env}/reviewer/anthropic`; AWS refuses
+  Haiku 5.5 on Bedrock for these accounts), picks from those lists and never
+  writes a URL. The prompt insists on a genuine reference
   to the earlier post's subject and prefers no suggestion to a doubtful one.
 - **Code validates.** An anchor must be 2 to 6 words, appear exactly once and sit
   outside headings, code, links, images and `{{...}}`; at most one link per
@@ -201,13 +203,26 @@ DecideLoop --pass--> SuggestLinks --(success, error or timeout)--> SetOutcomePas
   in `blog-content` merges them into the author's `repos:` list. Undecided
   suggestions are ignored, with a warning in the bag.
 
-Prerequisites: Titan Embed v2 and Haiku enabled in Bedrock in each account (the
-`anthropic.claude-haiku-5-5` model agreement must have been accepted), and for
-real suggestions the embeddings index present in `nakom.is-private[-sandbox]`.
+Prerequisites: Titan Embed v2 enabled in Bedrock (us-east-1) in each account;
+the Anthropic reviewer key parameter populated (the step reads the same one as
+the Opus reviewer); and, for real suggestions, the embeddings index present in
+`nakom.is-private[-sandbox]`. The suggest-links role can read only that one
+parameter and the one embeddings object, and invoke only Titan on Bedrock.
 
 `infra/scripts/link-suggestions-eval.ts` (`npm run eval-links-prod -- <post.md>
-[--floor n] [--model id] [--watch slug-fragment]`) dry-runs the step against a
-real post, read-only, to calibrate the floor and check for false positives.
+[--floor n] [--model id] [--watch slug-fragment] [--forbid slug-fragment]
+[--also-catalogue]`) dry-runs the step against a real post, read-only, to
+calibrate the floor and check for false positives. The known false-positive
+check, which must pass in both retrieval mode and catalogue-fallback mode (the
+second run forces the floor to 0.99 so the model is offered every post), is:
+
+```bash
+AWS_PROFILE=nakom.is-admin npm run eval-links-prod -- \
+  ~/repos/nakomis/blog-content/blog/2026-10-10-alexa-announce-hello-world.md \
+  --forbid three-of-them --also-catalogue
+```
+
+It exits 2 if the Alexa announce post is offered a link to the Cabal post.
 
 ### Manual prerequisites
 

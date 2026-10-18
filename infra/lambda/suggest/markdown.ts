@@ -243,3 +243,49 @@ export function windowsOf(
   }
   return windows.slice(0, maxWindows);
 }
+
+const WORD_CHAR = /[\p{L}\p{N}_]/u;
+
+/** True when [start, end) begins or ends inside a word (e.g. "Cabal" in "Cabalistic"). */
+export function crossesWordBoundary(body: string, start: number, end: number): boolean {
+  const first = body[start];
+  const last = body[end - 1];
+  const before = body[start - 1];
+  const after = body[end];
+  return (
+    (first !== undefined && WORD_CHAR.test(first) && before !== undefined && WORD_CHAR.test(before)) ||
+    (last !== undefined && WORD_CHAR.test(last) && after !== undefined && WORD_CHAR.test(after))
+  );
+}
+
+/** `host/path` of a URL, lower-cased, without scheme, query, fragment or trailing slash. */
+function urlKey(url: string): string {
+  return url
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/[?#].*$/, '')
+    .replace(/\/+$/, '')
+    .toLowerCase();
+}
+
+/**
+ * True when the text already links to `url`, whatever its form: http or https,
+ * a trailing slash, different case, or a root-relative `/<dated-stem>` link to
+ * a page on the same site.
+ */
+export function linksTo(body: string, url: string): boolean {
+  const wanted = urlKey(url);
+  const slash = wanted.indexOf('/');
+  const path = slash === -1 ? '' : wanted.slice(slash);
+  for (const m of body.matchAll(/(?:\]\(|<|\s|^)((?:https?:\/\/|\/)[^\s)>\]"']+)/gim)) {
+    const found = m[1];
+    if (found.startsWith('/')) {
+      if (path !== '' && urlKey(found) === path) {
+        return true;
+      }
+    } else if (urlKey(found) === wanted) {
+      return true;
+    }
+  }
+  return false;
+}

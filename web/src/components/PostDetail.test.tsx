@@ -604,7 +604,7 @@ describe('PostDetail — link and repo suggestions (PIPE-38)', () => {
     await screen.findByText('My Post');
 
     expect(screen.getByText('the Cabal').tagName).toBe('MARK');
-    expect(screen.getByRole('tooltip')).toHaveTextContent('It refers to the panel review.');
+    expect(screen.getByRole('group', { name: /link suggestion/i })).toHaveTextContent('It refers to the panel review.');
     expect(screen.getByText(/2 suggestions are undecided and will not be applied/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled();
   });
@@ -616,7 +616,7 @@ describe('PostDetail — link and repo suggestions (PIPE-38)', () => {
     renderDetail();
     await screen.findByText('My Post');
 
-    fireEvent.click(within(screen.getByRole('tooltip')).getByRole('button', { name: 'Accept' }));
+    fireEvent.click(within(screen.getByRole('group', { name: /link suggestion/i })).getByRole('button', { name: 'Accept' }));
 
     await waitFor(() =>
       expect(mockedSetDecisions).toHaveBeenCalledWith('my-post', { l1: 'accepted' }, 'tok'),
@@ -632,7 +632,7 @@ describe('PostDetail — link and repo suggestions (PIPE-38)', () => {
     renderDetail();
     await screen.findByText('My Post');
 
-    fireEvent.click(within(screen.getByRole('tooltip')).getByRole('button', { name: 'Reject' }));
+    fireEvent.click(within(screen.getByRole('group', { name: /link suggestion/i })).getByRole('button', { name: 'Reject' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('HTTP 500');
     await waitFor(() => expect(screen.getByText('the Cabal').tagName).toBe('MARK'));
@@ -700,7 +700,7 @@ describe('PostDetail — link and repo suggestions (PIPE-38)', () => {
     await screen.findByText('My Post');
 
     expect(screen.getByText(/will be skipped on approval/)).toBeInTheDocument();
-    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(screen.queryByRole('group', { name: /link suggestion/i })).toBeNull();
   });
 
   test('posts without suggestions render exactly as before', async () => {
@@ -730,5 +730,55 @@ describe('PostDetail — link and repo suggestions (PIPE-38)', () => {
     await waitFor(() =>
       expect(mockedSetDecisions).toHaveBeenCalledWith('my-post', { r1: 'accepted' }, 'tok'),
     );
+  });
+
+  test('Approve waits for pending suggestion saves, so an accept is never missed', async () => {
+    mockedFetch.mockResolvedValue(withSuggestions());
+    let finishSave: () => void = () => undefined;
+    const order: string[] = [];
+    mockedSetDecisions.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishSave = () => {
+            order.push('saved');
+            resolve({} as never);
+          };
+        }),
+    );
+    mockedDecide.mockImplementation(async () => {
+      order.push('decided');
+      return { slug: 'my-post', decision: 'approve', status: 'approved' };
+    });
+    mockedUseAuth.mockReturnValue(signedIn());
+    renderDetail();
+    await screen.findByText('My Post');
+
+    fireEvent.click(within(screen.getByRole('group', { name: /link suggestion/i })).getByRole('button', { name: 'Accept' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    await Promise.resolve();
+    expect(mockedDecide).not.toHaveBeenCalled();
+
+    finishSave();
+    await waitFor(() => expect(mockedDecide).toHaveBeenCalled());
+    expect(order).toEqual(['saved', 'decided']);
+  });
+
+  test('Approve is abandoned, with a message, if a choice could not be saved', async () => {
+    mockedFetch.mockResolvedValue(withSuggestions());
+    mockedSetDecisions.mockRejectedValue(new Error('Failed to save suggestion choice (HTTP 500)'));
+    mockedUseAuth.mockReturnValue(signedIn());
+    renderDetail();
+    await screen.findByText('My Post');
+
+    fireEvent.click(within(screen.getByRole('group', { name: /link suggestion/i })).getByRole('button', { name: 'Accept' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+
+    expect(await screen.findByText(/post was not approved/)).toBeInTheDocument();
+    expect(mockedDecide).not.toHaveBeenCalled();
+    // The choice was rolled back, and a second attempt is allowed.
+    mockedSetDecisions.mockReset();
+    mockedDecide.mockResolvedValue({ slug: 'my-post', decision: 'approve', status: 'approved' });
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(mockedDecide).toHaveBeenCalledTimes(1));
   });
 });

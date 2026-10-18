@@ -188,6 +188,6 @@ describe('link and repo suggestions config (PIPE-38)', () => {
   test('the embedding settings match the ingest script that built the index', () => {
     expect(LINKS.embedModel).toBe('amazon.titan-embed-text-v2:0');
     expect(LINKS.embedDims).toBe(1024);
-    expect(LINKS.model).toBe('eu.anthropic.claude-haiku-5-5');
+    expect(LINKS.model).toBe('claude-haiku-5-5');
   });
 });

@@ -429,6 +429,11 @@
 .sugg:focus-within .sugg__pop {
   display: block;
 }
+.sugg--dismissed .sugg__pop,
+.sugg--dismissed:hover .sugg__pop,
+.sugg--dismissed:focus-within .sugg__pop {
+  display: none;
+}
 .sugg__pop > * {
   display: block;
   margin-bottom: 0.3rem;

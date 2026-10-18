@@ -311,6 +311,8 @@ export class BlogPipelineReviewStack extends cdk.Stack {
         DRAFTS_BUCKET: draftsBucket.bucketName,
         PRIVATE_BUCKET: privateBucket,
         EMBED_REGION: LINKS.embedRegion,
+        // Haiku is called through the direct Anthropic API with the reviewer's key.
+        ANTHROPIC_PARAM_NAME: anthropicParam.parameterName,
         GITHUB_OWNERS: JSON.stringify(githubOwners()),
       },
     });
@@ -332,8 +334,10 @@ export class BlogPipelineReviewStack extends cdk.Stack {
         ],
       }),
     );
-    // Haiku, via the EU inference profile — the same statement the redrafter uses.
-    suggestLinksFn.addToRolePolicy(bedrockInvoke);
+    // Haiku goes through the direct Anthropic API (AWS refuses it for these
+    // accounts), so the role needs the key, not a Bedrock model permission.
+    // Plain String parameter, as for the reviewer: no KMS grant is needed.
+    anthropicParam.grantRead(suggestLinksFn);
 
     // ── State machine ────────────────────────────────────────────────────
     const reviewComplete = new sfn.Succeed(this, 'ReviewComplete');
@@ -449,7 +453,38 @@ export class BlogPipelineReviewStack extends cdk.Stack {
         cdk.Duration.seconds(LINKS.taskTimeoutSeconds),
       ),
     });
-    suggestLinks.addCatch(setOutcomePass, { resultPath: '$.suggestError' });
+    // When the Lambda itself crashes or times out nothing records the failure,
+    // so a re-review would show the previous iteration's suggestions as current.
+    // Mark this iteration as failed on the post row, then stage regardless.
+    const markSuggestFailed = new tasks.DynamoUpdateItem(this, 'MarkSuggestFailed', {
+      table: postsTable,
+      key: { slug: tasks.DynamoAttributeValue.fromString(sfn.JsonPath.stringAt('$.slug')) },
+      updateExpression: 'SET suggestionsSummary = :s',
+      expressionAttributeValues: {
+        ':s': tasks.DynamoAttributeValue.fromMap({
+          iteration: tasks.DynamoAttributeValue.numberFromString(
+            sfn.JsonPath.format('{}', sfn.JsonPath.stringAt('$.iteration')),
+          ),
+          status: tasks.DynamoAttributeValue.fromString('error'),
+          skippedReason: tasks.DynamoAttributeValue.fromString(
+            sfn.JsonPath.format(
+              'step failed: {}',
+              sfn.JsonPath.stringAt('$.suggestError.Error'),
+            ),
+          ),
+          links: tasks.DynamoAttributeValue.fromNumber(0),
+          repos: tasks.DynamoAttributeValue.fromNumber(0),
+          undecided: tasks.DynamoAttributeValue.fromNumber(0),
+          generatedAt: tasks.DynamoAttributeValue.fromString(
+            sfn.JsonPath.stringAt('$$.State.EnteredTime'),
+          ),
+        }),
+      },
+      resultPath: sfn.JsonPath.DISCARD,
+    });
+    markSuggestFailed.addCatch(setOutcomePass, { resultPath: sfn.JsonPath.DISCARD });
+    markSuggestFailed.next(setOutcomePass);
+    suggestLinks.addCatch(markSuggestFailed, { resultPath: '$.suggestError' });
     const setOutcomeCapped = setOutcome('SetOutcomeCapped', 'failed', 'capped');
     const setOutcomeQuorum = setOutcome('SetOutcomeQuorum', 'failed', 'quorum');
 

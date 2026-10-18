@@ -1,6 +1,8 @@
 import { createHash } from 'crypto';
 import {
   contextAround,
+  crossesWordBoundary,
+  linksTo,
   occurrences,
   overlapsRange,
   paragraphIndex,
@@ -11,6 +13,7 @@ import type {
   DroppedSuggestion,
   LinkPick,
   LinkSuggestion,
+  Picks,
   RepoInfo,
   RepoPick,
   RepoSuggestion,
@@ -35,8 +38,39 @@ export function repoId(fullName: string): string {
   return shortHash('repo', fullName.toLowerCase());
 }
 
+const MAX_REASON_CHARS = 300;
+
+/**
+ * Enforce the size limits on a parsed answer by trimming, not rejecting: more
+ * picks than allowed are cut to the first N, an over-long reason is truncated,
+ * and a missing one is replaced. The excess is reported so it lands in the
+ * audit list rather than vanishing.
+ */
+export function normalisePicks(
+  picks: Picks,
+  limits: { maxLinks: number; maxRepos: number },
+): { picks: Picks; dropped: DroppedSuggestion[] } {
+  const dropped: DroppedSuggestion[] = [];
+  const trim = (reason: string): string => {
+    const text = reason.trim() || 'No reason given.';
+    return text.length > MAX_REASON_CHARS ? `${text.slice(0, MAX_REASON_CHARS - 1)}…` : text;
+  };
+  for (const extra of picks.links.slice(limits.maxLinks)) {
+    dropped.push({ kind: 'link', value: extra.anchor_text, reason: `more than ${limits.maxLinks} links proposed` });
+  }
+  for (const extra of picks.repos.slice(limits.maxRepos)) {
+    dropped.push({ kind: 'repo', value: extra.full_name, reason: `more than ${limits.maxRepos} repositories proposed` });
+  }
+  return {
+    picks: {
+      links: picks.links.slice(0, limits.maxLinks).map((l) => ({ ...l, reason: trim(l.reason) })),
+      repos: picks.repos.slice(0, limits.maxRepos).map((r) => ({ ...r, reason: trim(r.reason) })),
+    },
+    dropped,
+  };
+}
+
 const ANCHOR_FORBIDDEN = /[[\]()`<>{}\n\r]/;
-const WORD_CHAR = /[\p{L}\p{N}_]/u;
 
 export interface LinkValidationInput {
   picks: LinkPick[];
@@ -102,12 +136,7 @@ export function validateLinks(input: LinkValidationInput): LinkValidationResult 
     }
     const start = found[0];
     const end = start + anchor.length;
-    const before = body[start - 1];
-    const after = body[end];
-    if (
-      (WORD_CHAR.test(anchor[0]) && before !== undefined && WORD_CHAR.test(before)) ||
-      (WORD_CHAR.test(anchor[anchor.length - 1]) && after !== undefined && WORD_CHAR.test(after))
-    ) {
+    if (crossesWordBoundary(body, start, end)) {
       drop(pick, 'anchor starts or ends in the middle of a word');
       continue;
     }
@@ -115,7 +144,7 @@ export function validateLinks(input: LinkValidationInput): LinkValidationResult 
       drop(pick, 'anchor sits inside a heading, code, link, image or shortcode');
       continue;
     }
-    if (body.includes(candidate.url)) {
+    if (linksTo(body, candidate.url)) {
       drop(pick, 'the post already links to that target');
       continue;
     }
