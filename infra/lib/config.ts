@@ -252,6 +252,9 @@ export function alertsTopicName(deployEnv: DeployEnv): string {
   return `blog-pipeline-alerts-${deployEnv}`;
 }
 
+/** The object the promote workflow writes for BD-1's queue row (HOME-502). */
+export const BLOG_QUEUE_KEY = 'blog-queue.json';
+
 /** A reviewer provider id — one of `REVIEW.providers`. */
 export type ReviewProvider = (typeof REVIEW.providers)[number];
 
