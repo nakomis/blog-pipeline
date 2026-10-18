@@ -111,6 +111,40 @@ describe('PostDetail — auth gate', () => {
   });
 });
 
+describe('PostDetail — frontmatter panel (PIPE-37)', () => {
+  test('shows the panel above the tabs and leaves Approve enabled despite warnings', async () => {
+    mockedUseAuth.mockReturnValue(signedIn());
+    mockedFetch.mockResolvedValue({
+      ...sampleDetail,
+      frontmatter: {
+        present: true,
+        raw: 'title: "My Post"',
+        fields: { title: 'My Post' },
+        filenameKnown: true,
+        warnings: [
+          { code: 'missing-field', field: 'author', message: "Required field 'author' is missing or empty." },
+        ],
+      },
+    });
+    renderDetail();
+
+    const warning = await screen.findByText("Required field 'author' is missing or empty.");
+    const tabs = screen.getByRole('navigation', { name: 'Post views' });
+    expect(
+      warning.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled();
+  });
+
+  test('renders without the panel when the API sends no frontmatter', async () => {
+    mockedUseAuth.mockReturnValue(signedIn());
+    mockedFetch.mockResolvedValue(sampleDetail);
+    renderDetail();
+    await screen.findByText('Final heading');
+    expect(screen.queryByText('Frontmatter')).not.toBeInTheDocument();
+  });
+});
+
 describe('PostDetail — content', () => {
   test('fetches and renders the article', async () => {
     mockedFetch.mockResolvedValue(sampleDetail);

@@ -5,6 +5,7 @@ import {
   fetchFailedMarkdown,
   saveFailedMarkdown,
   reReviewFailed,
+  fetchRepoChecks,
 } from './post-detail';
 
 vi.mock('../config/config', () => ({
@@ -140,5 +141,26 @@ describe('failed-post editing (PIPE-36)', () => {
   ])('%s throws on a non-ok response', async (_name, call) => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 409 }));
     await expect(call()).rejects.toThrow(/HTTP 409/);
+  });
+});
+
+describe('fetchRepoChecks', () => {
+  test('requests the repo checks with a bearer token', async () => {
+    const repos = [{ name: 'a', url: 'https://github.com/o/a', state: 'ok' }];
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => ({ repos }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    expect(await fetchRepoChecks('a/b', 'tok')).toEqual(repos);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.example.test/posts/a%2Fb/repo-checks',
+      { headers: { Authorization: 'Bearer tok' } },
+    );
+  });
+
+  test('throws on a non-ok response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }));
+    await expect(fetchRepoChecks('a', 'tok')).rejects.toThrow('HTTP 500');
   });
 });

@@ -11,6 +11,8 @@ export interface Post {
   /** ISO 8601 timestamp of the last pipeline activity. */
   updatedAt: string;
   createdAt?: string;
+  /** The blog-content filename the post came from (PIPE-37). */
+  sourceFile?: string;
   /** Short blurb shown on the dashboard card. */
   summary?: string;
   /** Number of review iterations run so far (0–4). */

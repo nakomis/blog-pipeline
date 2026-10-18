@@ -15,6 +15,7 @@ import {
   type PostDetail as PostDetailData,
 } from '../api/post-detail';
 import { displayStage, type FailureHistoryEntry, type Post } from '../api/posts';
+import FrontmatterPanel from './FrontmatterPanel';
 import './PostDetail.css';
 
 type Tab = 'article' | 'diff' | 'reviews' | 'images';
@@ -438,6 +439,12 @@ function PostDetailInner({ idToken }: { idToken: string }) {
           {error}
         </p>
       )}
+
+      <FrontmatterPanel
+        frontmatter={data.frontmatter}
+        slug={data.post.slug}
+        idToken={idToken}
+      />
 
       <nav className="detail__tabs" aria-label="Post views">
         {(['article', 'diff', 'reviews', 'images'] as const).map((t) => (

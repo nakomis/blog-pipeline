@@ -285,3 +285,71 @@
   font-size: 0.85rem;
   color: var(--muted);
 }
+
+/* ── Frontmatter panel (PIPE-37) ────────────────────────────────────── */
+.frontmatter {
+  background: var(--panel);
+  padding: 0.6rem 0.9rem;
+  border-radius: 4px;
+  margin: 0.75rem 0;
+}
+.frontmatter > summary {
+  cursor: pointer;
+  color: var(--heading);
+}
+.frontmatter__warnings {
+  margin: 0.6rem 0 0;
+  padding-left: 1.25rem;
+  color: #ffb3bd;
+}
+.frontmatter__fields {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0.75rem 0 0;
+}
+.frontmatter__fields dt {
+  color: var(--muted);
+  font-family: monospace;
+}
+.frontmatter__fields dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.frontmatter__group {
+  display: contents;
+}
+.frontmatter__repos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.frontmatter__muted {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.frontmatter__chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.frontmatter__chip {
+  background: var(--bg);
+  border-radius: 999px;
+  padding: 0.05rem 0.6rem;
+  font-size: 0.85rem;
+}
+.frontmatter__heading {
+  margin: 0.9rem 0 0;
+  color: var(--heading);
+  font-size: 0.9rem;
+}
+.frontmatter__raw {
+  margin-top: 0.75rem;
+}
+.frontmatter__raw pre {
+  overflow-x: auto;
+  background: var(--bg);
+  padding: 0.75rem;
+  border-radius: 4px;
+}
