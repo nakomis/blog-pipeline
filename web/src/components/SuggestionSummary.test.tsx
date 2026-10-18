@@ -78,3 +78,29 @@ test('keeps an audit list of what validation dropped', () => {
   expect(screen.getByText('Dropped by validation (1)')).toBeInTheDocument();
   expect(screen.getByText(/not sure/)).toBeInTheDocument();
 });
+
+describe('affiliate note (PIPE-41)', () => {
+  test('says when the affiliate step failed, with the reason', () => {
+    renderSummary({ affiliatesStatus: 'error', affiliatesReason: 'error: overloaded' });
+    expect(screen.getByText(/affiliate step failed \(error: overloaded\)/)).toBeInTheDocument();
+  });
+
+  test('says when it was skipped', () => {
+    renderSummary({ affiliatesStatus: 'skipped', affiliatesReason: 'empty-post' });
+    expect(screen.getByText(/affiliate step was skipped \(empty-post\)/)).toBeInTheDocument();
+  });
+
+  test('counts mentions still to do', () => {
+    const m = {
+      id: 'a', kind: 'affiliate' as const, anchorText: 'x', productName: 'x', quote: 'x', before: '', after: '',
+      occurrence: { paragraph: 0, offset: 0 }, reason: '', decision: 'pending' as const,
+    };
+    renderSummary({ affiliatesStatus: 'ok', affiliates: [m, { ...m, id: 'b', decision: 'skipped' }] });
+    expect(screen.getByText(/2 product mentions found for affiliate links; 1 still to do/)).toBeInTheDocument();
+  });
+
+  test('says nothing when there were none', () => {
+    renderSummary({ affiliatesStatus: 'ok', affiliates: [] });
+    expect(screen.queryByText(/product mention/)).not.toBeInTheDocument();
+  });
+});

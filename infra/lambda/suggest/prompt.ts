@@ -151,8 +151,9 @@ RULES FOR EACH MENTION
 - anchor_text is copied verbatim from the post: the product's name as written,
   2 to 6 words, never a whole sentence.
 - quote is the exact sentence from the post that contains the anchor, copied
-  verbatim. Choose the first or clearest mention; a product mentioned several
-  times needs only one entry.
+  verbatim. Choose the first or clearest mention in ordinary prose: if the
+  first is in a heading, a link, a caption, a code block or a title, use a
+  later sentence instead. A product mentioned several times needs only one entry.
 - product_name is a short label for Martin to recognise it by.
 - One entry per product.
 - reason is one short, plain sentence saying how the text shows he used it.

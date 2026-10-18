@@ -90,6 +90,7 @@ describe('AFFILIATE_SYSTEM_PROMPT (PIPE-41)', () => {
   test('asks for the exact sentence and a short anchor', () => {
     expect(AFFILIATE_SYSTEM_PROMPT).toContain('exact sentence');
     expect(AFFILIATE_SYSTEM_PROMPT).toContain('2 to 6 words');
+    expect(AFFILIATE_SYSTEM_PROMPT).toContain('in ordinary prose');
   });
 });
 

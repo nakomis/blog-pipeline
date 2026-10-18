@@ -1,6 +1,8 @@
 import { createContext, useContext, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { LinkSuggestion, SuggestionDecision } from '../api/post-detail';
+import { walkText } from './markMarks';
+import type { MdastNode } from './markMarks';
 
 /**
  * Inline link suggestions in the rendered article (PIPE-38).
@@ -12,26 +14,6 @@ import type { LinkSuggestion, SuggestionDecision } from '../api/post-detail';
  * accepted links merely *look* like links, marked "applied on approval", until
  * the post is approved.
  */
-
-interface MdastNode {
-  type: string;
-  value?: string;
-  children?: MdastNode[];
-  data?: { hName?: string; hProperties?: Record<string, unknown> };
-}
-
-/** Node types whose text must never carry a suggestion. */
-const OPAQUE = new Set([
-  'heading',
-  'link',
-  'linkReference',
-  'code',
-  'inlineCode',
-  'image',
-  'imageReference',
-  'html',
-  'definition',
-]);
 
 function markNode(link: LinkSuggestion): MdastNode {
   return {
@@ -68,22 +50,6 @@ function splitText(node: MdastNode, links: LinkSuggestion[]): MdastNode[] {
   return out;
 }
 
-function walk(node: MdastNode, links: LinkSuggestion[]): void {
-  if (!node.children || OPAQUE.has(node.type)) {
-    return;
-  }
-  const next: MdastNode[] = [];
-  for (const child of node.children) {
-    if (child.type === 'text') {
-      next.push(...splitText(child, links));
-    } else {
-      walk(child, links);
-      next.push(child);
-    }
-  }
-  node.children = next;
-}
-
 /**
  * A remark plugin that highlights each non-rejected suggestion's anchor text.
  * Rejected suggestions lose their highlight; anchors that no longer occur in a
@@ -94,7 +60,7 @@ export function suggestionPlugin(links: LinkSuggestion[]) {
   const active = links.filter((l) => l.decision !== 'rejected');
   return () => (tree: MdastNode) => {
     if (active.length > 0) {
-      walk(tree, active);
+      walkText(tree, (node) => splitText(node, active));
     }
   };
 }

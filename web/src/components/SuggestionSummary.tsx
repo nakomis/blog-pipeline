@@ -6,7 +6,7 @@ import type { LinkSuggestion, SuggestionDecision, Suggestions } from '../api/pos
  * be shown inline, and the audit list of what validation dropped. Suggested
  * repos are shown in the frontmatter panel, beside the repos already listed.
  */
-export function SuggestionSummary({
+function LinkAndRepoSummary({
   suggestions,
   stale,
   editable,
@@ -96,5 +96,41 @@ export function SuggestionSummary({
         </details>
       )}
     </section>
+  );
+}
+
+/** What the affiliate step did, when that is worth saying (PIPE-41). */
+function affiliateNote(suggestions: Suggestions): string | null {
+  if (suggestions.affiliatesStatus === 'error') {
+    return `The affiliate step failed${suggestions.affiliatesReason ? ` (${suggestions.affiliatesReason})` : ''}, so no product mentions were found. The post was staged regardless.`;
+  }
+  if (suggestions.affiliatesStatus === 'skipped') {
+    return `The affiliate step was skipped${suggestions.affiliatesReason ? ` (${suggestions.affiliatesReason})` : ''}.`;
+  }
+  const n = suggestions.affiliates?.length ?? 0;
+  if (suggestions.affiliatesStatus === 'ok' && n > 0) {
+    const pending = (suggestions.affiliates ?? []).filter((a) => a.decision === 'pending').length;
+    return `${n} product mention${n === 1 ? '' : 's'} found for affiliate links${pending > 0 ? `; ${pending} still to do in the Affiliate links tab` : ''}.`;
+  }
+  return null;
+}
+
+export function SuggestionSummary(props: {
+  suggestions: Suggestions;
+  stale: LinkSuggestion[];
+  editable: boolean;
+  onDecide: (id: string, decision: SuggestionDecision) => void;
+  onRejectAll: () => void;
+}) {
+  const note = affiliateNote(props.suggestions);
+  return (
+    <>
+      <LinkAndRepoSummary {...props} />
+      {note && (
+        <p className="sugg-summary sugg-summary--empty" role="status">
+          {note}
+        </p>
+      )}
+    </>
   );
 }
