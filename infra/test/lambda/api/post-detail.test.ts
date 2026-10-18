@@ -34,6 +34,7 @@ beforeEach(() => {
   s3Mock.reset();
   process.env.POSTS_TABLE_NAME = 'posts';
   process.env.DRAFTS_BUCKET = 'drafts';
+  process.env.BLOG_BASE_URL = 'https://blog.example.test';
 });
 
 test('400 when slug is missing', async () => {
@@ -165,4 +166,55 @@ test('after a re-review moves past an edit, shows the later reviewed draft', asy
   const body = JSON.parse((await postDetail(event('p'))).body);
   expect(body.finalMarkdown).toBe('# fifth');
   expect(body.iterations).toHaveLength(5);
+});
+
+test('includes the parsed frontmatter and its warnings (PIPE-37)', async () => {
+  const original = [
+    '---',
+    'title: "T"',
+    'date: "2026-10-18"',
+    'excerpt: "E"',
+    'tags: ["a"]',
+    'author: "A"',
+    'canonical: "https://blog.example.test/wrong"',
+    'approved: true',
+    '---',
+    'body',
+  ].join('\n');
+  ddbMock.on(GetCommand).resolves({
+    Item: {
+      slug: 'p',
+      title: 'T',
+      status: 'staged',
+      reviewIteration: 1,
+      sourceFile: '2026-10-18-p.md',
+    },
+  });
+  s3Mock.on(HeadObjectCommand).rejects(
+    Object.assign(new Error('nf'), { name: 'NotFound' }),
+  );
+  s3Mock.on(GetObjectCommand).resolves(draftBody(original));
+
+  const body = JSON.parse((await postDetail(event('p'))).body);
+
+  expect(body.frontmatter).toMatchObject({
+    present: true,
+    filenameKnown: true,
+    fields: { title: 'T', approved: 'true' },
+  });
+  expect(body.frontmatter.warnings.map((w: { code: string }) => w.code)).toEqual([
+    'canonical-mismatch',
+    'approved-by-hand',
+  ]);
+});
+
+test('reports missing frontmatter rather than failing', async () => {
+  ddbMock.on(GetCommand).resolves({ Item: { slug: 'p', status: 'staged' } });
+  s3Mock.on(HeadObjectCommand).rejects(
+    Object.assign(new Error('nf'), { name: 'NotFound' }),
+  );
+  s3Mock.on(GetObjectCommand).resolves(draftBody('# no frontmatter'));
+  const body = JSON.parse((await postDetail(event('p'))).body);
+  expect(body.frontmatter.present).toBe(false);
+  expect(body.frontmatter.warnings[0].code).toBe('frontmatter-missing');
 });

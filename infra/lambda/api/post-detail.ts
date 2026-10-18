@@ -9,6 +9,7 @@ import type {
 import { imageKey } from '../images/placeholders';
 import { draftExists, draftKey, getDraft, reviewsKey } from '../review/drafts';
 import { requireEnv } from '../review/runtime';
+import { buildFrontmatterInfo } from './frontmatter';
 import { corsHeaders, jsonResponse } from './http';
 
 /**
@@ -19,6 +20,7 @@ import { corsHeaders, jsonResponse } from './http';
  *  - the final article (the latest draft iteration) and the original (iter 1),
  *    for the diff;
  *  - each iteration's reviewer critiques + gate decision (from `reviews.json`);
+ *  - the author's frontmatter, parsed, with warnings (PIPE-37);
  *  - the generated images, with a presigned GET URL for the ready ones (the
  *    drafts bucket is private, so the SPA can't read it directly).
  *
@@ -131,7 +133,21 @@ export async function postDetail(
 
   return jsonResponse(
     200,
-    { post: Item, finalMarkdown, originalMarkdown, iterations, images },
+    {
+      post: Item,
+      finalMarkdown,
+      originalMarkdown,
+      iterations,
+      images,
+      frontmatter: buildFrontmatterInfo({
+        originalMarkdown,
+        finalMarkdown,
+        slug,
+        sourceFile: Item.sourceFile,
+        status: typeof Item.status === 'string' ? Item.status : undefined,
+        blogBaseUrl: requireEnv('BLOG_BASE_URL'),
+      }),
+    },
     cors,
   );
 }

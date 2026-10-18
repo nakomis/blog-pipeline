@@ -70,6 +70,14 @@ export const DEPLOYMENT_TRACKER_DOMAIN = 'api.infra.nakomis.com';
 export const BLOG_CONTENT_REPO = 'nakomis/blog-content';
 
 /**
+ * Public origin of the blog itself (no trailing slash). A post's `canonical`
+ * frontmatter is expected to be `${BLOG_BASE_URL}/<filename-without-.md>`; the
+ * bag's frontmatter panel (PIPE-37) warns when it is not. Posts in every
+ * environment carry the production canonical, so this does not vary by env.
+ */
+export const BLOG_BASE_URL = 'https://blog.nakomis.com';
+
+/**
  * Cloud review loop (PIPE-3) tuning.
  *
  * These are stable product constants, not environment-specific values — the

@@ -104,6 +104,7 @@ async function main(): Promise<void> {
       TableName: tableName,
       Item: {
         slug,
+        sourceFile: `${now.slice(0, 10)}-${slug}.md`,
         status: 'queued',
         title: 'Why I Use Git Worktrees',
         summary:

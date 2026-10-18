@@ -2,6 +2,7 @@ import {
   resolveConfig,
   DEPLOYMENT_TRACKER_ACCOUNT_ID,
   DEPLOYMENT_TRACKER_DOMAIN,
+  BLOG_BASE_URL,
   BLOG_CONTENT_REPO,
   REVIEW,
   requiredReviewers,
@@ -60,6 +61,12 @@ describe('deployment tracker constants', () => {
 describe('trigger constants', () => {
   test('BLOG_CONTENT_REPO names the source repo for the trigger role', () => {
     expect(BLOG_CONTENT_REPO).toBe('nakomis/blog-content');
+  });
+});
+
+describe('blog base URL (PIPE-37)', () => {
+  test('is an https origin with no trailing slash', () => {
+    expect(BLOG_BASE_URL).toMatch(/^https:\/\/[^/]+$/);
   });
 });
 

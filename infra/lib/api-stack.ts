@@ -17,7 +17,7 @@ import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import { Construct } from 'constructs';
-import { EnvConfig } from './config';
+import { BLOG_BASE_URL, EnvConfig } from './config';
 
 export interface ApiStackProps extends cdk.StackProps {
   config: EnvConfig;
@@ -237,6 +237,8 @@ export class ApiStack extends cdk.Stack {
         // The API sits on a different subdomain from the SPA, so responses
         // need CORS headers — the handler echoes an allowlisted origin.
         ALLOWED_ORIGINS: allowedOrigins.join(','),
+        // Expected canonical origin for the bag's frontmatter checks (PIPE-37).
+        BLOG_BASE_URL,
       },
     });
     // The bag (PIPE-4) writes post status, edit metadata and decision
@@ -331,6 +333,8 @@ export class ApiStack extends cdk.Stack {
     // `/posts/{slug}` — the bag's detail bundle and write actions (PIPE-4).
     const post = posts.addResource('{slug}');
     post.addMethod('GET', apiIntegration, securedMethod);
+    // Live GitHub visibility check for the post's `repos:` URLs (PIPE-37).
+    post.addResource('repo-checks').addMethod('GET', apiIntegration, securedMethod);
     post.addResource('edit').addMethod('POST', apiIntegration, securedMethod);
     post
       .addResource('decision')

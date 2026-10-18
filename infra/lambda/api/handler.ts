@@ -13,12 +13,14 @@ import { listPosts } from './list-posts';
 import { postDetail } from './post-detail';
 import { postEdit, postDecision } from './post-actions';
 import { publishNow } from './publish-now';
+import { repoChecks } from './repo-checks';
 import { corsHeaders, jsonResponse } from './http';
 
 /**
  * The dashboard API Lambda — a small router fronting the dashboard routes:
  *  - `GET  /posts`                  — list posts (Cognito + API key);
  *  - `GET  /posts/{slug}`           — the detail bundle for the bag (PIPE-4);
+ *  - `GET  /posts/{slug}/repo-checks` — are the post's `repos:` URLs reachable on GitHub? (PIPE-37);
  *  - `POST /posts/{slug}/edit`      — edit a staged draft, optionally re-review;
  *  - `POST /posts/{slug}/decision`  — approve or reject a staged post;
  *  - `GET  /posts/{slug}/markdown`  — a failed post's Markdown, for editing (PIPE-36);
@@ -44,6 +46,9 @@ export async function handler(
     }
     if (method === 'GET' && resource === '/posts/{slug}') {
       return await postDetail(event);
+    }
+    if (method === 'GET' && resource === '/posts/{slug}/repo-checks') {
+      return await repoChecks(event);
     }
     if (method === 'POST' && resource === '/posts/{slug}/edit') {
       return await postEdit(event);

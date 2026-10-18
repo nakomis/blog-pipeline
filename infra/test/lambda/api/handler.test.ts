@@ -21,6 +21,9 @@ jest.mock('../../../lambda/api/failed-edit', () => ({
   saveFailedMarkdown: jest.fn().mockResolvedValue({ statusCode: 200, body: 'save' }),
   reReviewFailed: jest.fn().mockResolvedValue({ statusCode: 200, body: 'rereview' }),
 }));
+jest.mock('../../../lambda/api/repo-checks', () => ({
+  repoChecks: jest.fn().mockResolvedValue({ statusCode: 200, body: 'repos' }),
+}));
 jest.mock('../../../lambda/api/publish-now', () => ({
   publishNow: jest.fn().mockResolvedValue({ statusCode: 202, body: 'published' }),
 }));
@@ -32,6 +35,7 @@ import { imageCredit } from '../../../lambda/api/image-credit';
 import { postDetail } from '../../../lambda/api/post-detail';
 import { postEdit, postDecision } from '../../../lambda/api/post-actions';
 import { publishNow } from '../../../lambda/api/publish-now';
+import { repoChecks } from '../../../lambda/api/repo-checks';
 import {
   getFailedMarkdown,
   reReviewFailed,
@@ -127,4 +131,10 @@ test('routes the failed-post edit routes to failed-edit (PIPE-36)', async () => 
   expect(getFailedMarkdown).toHaveBeenCalledTimes(1);
   expect(saveFailedMarkdown).toHaveBeenCalledTimes(1);
   expect(reReviewFailed).toHaveBeenCalledTimes(1);
+});
+
+test('routes GET /posts/{slug}/repo-checks to repoChecks', async () => {
+  await handler(event('GET', '/posts/{slug}/repo-checks'));
+  expect(repoChecks).toHaveBeenCalled();
+  expect(mockDetail).not.toHaveBeenCalled();
 });

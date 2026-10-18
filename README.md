@@ -24,6 +24,7 @@ If you find this useful, please consider buying me a coffee:
   * [Image generation (PIPE-6)](#image-generation-pipe-6)
   * [fal.ai credit warning (PIPE-34)](#falai-credit-warning-pipe-34)
   * [Sandbox dry-run](#sandbox-dry-run)
+- [Frontmatter panel (PIPE-37)](#frontmatter-panel-pipe-37)
 - [Trigger](#trigger)
   * [Manual prerequisite](#manual-prerequisite)
 - [First deployment](#first-deployment)
@@ -294,6 +295,28 @@ aws stepfunctions start-execution \
 The seed script writes a `queued` post item and its iteration-1 draft to S3;
 pass an alternative slug as an argument to `seed-draft.ts` to seed more than
 one.
+
+## Frontmatter panel (PIPE-37)
+
+The bag's post view has a collapsible **Frontmatter** panel above the tabs. It shows
+every field of the author's frontmatter (the iteration-1 draft, which is what
+promotion keeps), the unknown fields, and the raw YAML. It is collapsed unless
+something needs a look. Warnings never block Approve or Reject:
+
+- a required field (title, date, excerpt, tags, author, canonical) is missing or empty;
+- `canonical` is not `<blog base URL>/<filename-without-.md>` (the base URL is
+  `BLOG_BASE_URL` in `infra/lib/config.ts`);
+- `date` does not match the filename's date prefix;
+- `approved` is set in the author's frontmatter but the post has not been approved in the bag;
+- the staged version's frontmatter differs from the author's (promotion keeps the author's);
+- a `repos:` URL is private or 404s on GitHub.
+
+The filename comes from the `sourceFile` attribute that blog-content's `queue-posts.py`
+writes to the posts table. Older items without it fall back to the filename implied by
+`canonical`, or skip the two filename checks. The repository check is
+`GET /posts/{slug}/repo-checks`: it reads the `repos:` list from the draft itself, checks
+`github.com` URLs live through the GitHub API (using the existing dispatch token for the
+rate limit if it is set) and shows other hosts without checking them.
 
 ## Trigger
 

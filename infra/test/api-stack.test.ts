@@ -5,7 +5,7 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import { ApiStack } from '../lib/api-stack';
-import { EnvConfig } from '../lib/config';
+import { BLOG_BASE_URL, EnvConfig } from '../lib/config';
 
 const sandboxConfig: EnvConfig = {
   deployEnv: 'sandbox',
@@ -115,6 +115,24 @@ describe('ApiStack', () => {
     });
     // The four PIPE-4 routes, publish-now, plus GET/POST markdown and rereview.
     expect(Object.keys(secured).length).toBeGreaterThanOrEqual(8);
+  });
+
+  test('exposes the repo-checks route, secured, and the blog base URL (PIPE-37)', () => {
+    template.hasResourceProperties('AWS::ApiGateway::Resource', {
+      PathPart: 'repo-checks',
+    });
+    template.hasResourceProperties('AWS::ApiGateway::Method', {
+      HttpMethod: 'GET',
+      ApiKeyRequired: true,
+      AuthorizationType: 'COGNITO_USER_POOLS',
+      ResourceId: Match.anyValue(),
+    });
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'blog-pipeline-api-sandbox',
+      Environment: {
+        Variables: Match.objectLike({ BLOG_BASE_URL: BLOG_BASE_URL }),
+      },
+    });
   });
 
   test('grants the Lambda permission to start the review state machine', () => {
