@@ -6,6 +6,9 @@ import {
   BLOG_CONTENT_REPO,
   REVIEW,
   requiredReviewers,
+  LINKS,
+  githubOwners,
+  privateBucketName,
 } from '../lib/config';
 import { decideGate } from '../lambda/review/gate';
 
@@ -169,5 +172,22 @@ describe('review gate tripwire', () => {
       ...perfect.slice(1),
     ];
     expect(decideGate({ reviews: split, iteration: 1 }).decision).toBe('loop');
+  });
+});
+
+describe('link and repo suggestions config (PIPE-38)', () => {
+  test('the private bucket name is derived per environment, as nakom.is does', () => {
+    expect(privateBucketName('prod')).toBe('nakom.is-private');
+    expect(privateBucketName('sandbox')).toBe('nakom.is-private-sandbox');
+  });
+
+  test('suggestable repos belong to the owner of the content repo', () => {
+    expect(githubOwners()).toEqual([BLOG_CONTENT_REPO.split('/')[0]]);
+  });
+
+  test('the embedding settings match the ingest script that built the index', () => {
+    expect(LINKS.embedModel).toBe('amazon.titan-embed-text-v2:0');
+    expect(LINKS.embedDims).toBe(1024);
+    expect(LINKS.model).toBe('eu.anthropic.claude-haiku-5-5');
   });
 });

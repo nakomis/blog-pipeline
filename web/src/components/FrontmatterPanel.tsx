@@ -5,7 +5,10 @@ import {
   type FrontmatterValue,
   type FrontmatterWarning,
   type RepoCheck,
+  type RepoSuggestion,
+  type SuggestionDecision,
 } from '../api/post-detail';
+import { RepoSuggestionRow } from './RepoSuggestionRow';
 
 /**
  * The frontmatter panel in the bag (PIPE-37): every field of the author's
@@ -148,10 +151,17 @@ export default function FrontmatterPanel({
   frontmatter,
   slug,
   idToken,
+  repoSuggestions,
+  onDecideSuggestion,
+  suggestionsEditable = false,
 }: {
   frontmatter: FrontmatterInfo | undefined;
   slug: string;
   idToken: string;
+  /** Repos the link/repo suggestion step proposes adding to `repos:` (PIPE-38). */
+  repoSuggestions?: RepoSuggestion[];
+  onDecideSuggestion?: (id: string, decision: SuggestionDecision) => void;
+  suggestionsEditable?: boolean;
 }) {
   const fields = frontmatter?.fields ?? null;
   const repos = reposOf(fields);
@@ -198,12 +208,23 @@ export default function FrontmatterPanel({
     }));
   const warnings = [...frontmatter.warnings, ...repoWarnings];
 
+  const suggestedRepos = repoSuggestions ?? [];
+  const suggestedRows = suggestedRepos.map((r) => (
+    <RepoSuggestionRow
+      key={r.id}
+      repo={r}
+      editable={suggestionsEditable && onDecideSuggestion !== undefined}
+      onDecide={onDecideSuggestion ?? (() => undefined)}
+    />
+  ));
+  const hasPendingSuggestion = suggestedRepos.some((r) => r.decision === 'pending');
+
   const known = new Set<string>(KNOWN_FIELDS);
   const present = KNOWN_FIELDS.filter((k) => fields && k in fields);
   const others = Object.keys(fields ?? {}).filter((k) => !known.has(k));
 
   return (
-    <details className="frontmatter" open={warnings.length > 0}>
+    <details className="frontmatter" open={warnings.length > 0 || hasPendingSuggestion}>
       <summary>
         Frontmatter
         {warnings.length > 0 && (
@@ -242,6 +263,7 @@ export default function FrontmatterPanel({
                         pending={hasRepos && checks === null && !checkFailed}
                       />
                     ))}
+                    {suggestedRows}
                   </ul>
                   {checkFailed && (
                     <span className="frontmatter__muted">
@@ -254,6 +276,17 @@ export default function FrontmatterPanel({
               <FieldRow key={name} name={name} value={fields[name]} />
             ),
           )}
+        </dl>
+      )}
+
+      {suggestedRows.length > 0 && !present.includes('repos') && (
+        <dl className="frontmatter__fields">
+          <div className="frontmatter__group">
+            <dt>repos</dt>
+            <dd>
+              <ul className="frontmatter__repos">{suggestedRows}</ul>
+            </dd>
+          </div>
         </dl>
       )}
 

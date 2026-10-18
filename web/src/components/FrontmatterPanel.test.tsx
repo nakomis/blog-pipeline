@@ -4,6 +4,7 @@ import {
   fetchRepoChecks,
   type FrontmatterInfo,
   type RepoCheck,
+  type RepoSuggestion,
 } from '../api/post-detail';
 
 vi.mock('../api/post-detail');
@@ -252,5 +253,55 @@ describe('reposOf', () => {
     expect(
       reposOf({ repos: [{ name: 'a', url: 'u' }, { name: 'b' }, ['c'], 'd'] }),
     ).toEqual([{ name: 'a', url: 'u' }]);
+  });
+});
+
+describe('FrontmatterPanel — suggested repos (PIPE-38)', () => {
+  const suggestion: RepoSuggestion = {
+    id: 'r1', kind: 'repo', fullName: 'nakomis/mcps', name: 'mcps', url: 'https://github.com/nakomis/mcps',
+    description: null, evidence: 'The tool lives in mcps.', reason: 'Discussed.', source: 'llm', decision: 'pending',
+  };
+
+  test('shows suggestions beside the existing repos and reports decisions', async () => {
+    mockedChecks.mockResolvedValue([]);
+    const onDecide = vi.fn();
+    await act(async () => {
+      render(
+        <FrontmatterPanel
+          frontmatter={withRepos()}
+          slug="p"
+          idToken="tok"
+          repoSuggestions={[suggestion]}
+          onDecideSuggestion={onDecide}
+          suggestionsEditable
+        />,
+      );
+    });
+    expect(screen.getByText('claude-chats')).toBeInTheDocument();
+    expect(screen.getByText('suggested')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'mcps' })).toBeInTheDocument();
+    screen.getByRole('button', { name: 'Accept' }).click();
+    expect(onDecide).toHaveBeenCalledWith('r1', 'accepted');
+  });
+
+  test('creates a repos group when the post has none, and opens the panel for pending ones', () => {
+    const { container } = render(
+      <FrontmatterPanel
+        frontmatter={info()}
+        slug="p"
+        idToken="tok"
+        repoSuggestions={[suggestion]}
+      />,
+    );
+    expect(container.querySelector('details.frontmatter')).toHaveAttribute('open');
+    expect(screen.getByRole('link', { name: 'mcps' })).toBeInTheDocument();
+    // not editable without a handler: no accept / reject controls
+    expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull();
+  });
+
+  test('is unchanged without suggestions', () => {
+    const { container } = render(<FrontmatterPanel frontmatter={info()} slug="p" idToken="tok" />);
+    expect(container.querySelector('details.frontmatter')).not.toHaveAttribute('open');
+    expect(screen.queryByText('suggested')).toBeNull();
   });
 });

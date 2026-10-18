@@ -20,6 +20,7 @@ If you find this useful, please consider buying me a coffee:
 - [Environments](#environments)
 - [Project status](#project-status)
 - [Review loop](#review-loop)
+  * [Link and repo suggestions (PIPE-38)](#link-and-repo-suggestions-pipe-38)
   * [Manual prerequisites](#manual-prerequisites)
   * [Image generation (PIPE-6)](#image-generation-pipe-6)
   * [fal.ai credit warning (PIPE-34)](#falai-credit-warning-pipe-34)
@@ -157,6 +158,56 @@ which the bag shows as "Previous failures". The re-trigger is idempotent: a
 retry of a re-review that has already started returns `200` with
 `alreadyStarted: true`, and the Step Functions execution is named
 `rereview-{slug}-{iteration}`, so it cannot start twice.
+
+### Link and repo suggestions (PIPE-38)
+
+When the review loop passes, a separate best-effort state, `SuggestLinks`, runs
+before the post is staged. It proposes links from the post to earlier posts, and
+public GitHub repos the post names for its `repos:` frontmatter. Nothing is
+applied silently: Martin accepts or rejects each in the bag, and only accepted
+ones are written when he approves.
+
+```
+DecideLoop --pass--> SuggestLinks --(success, error or timeout)--> SetOutcomePass
+```
+
+- **Candidates come from code.** The draft is cut into ~700-character windows,
+  embedded with Titan Embed Text v2 and compared with the blog's existing index,
+  `blog-embeddings.json` in the `nakom.is` private bucket (written by
+  `blog-app/scripts/ingest-blog.py`, so it holds published posts only). Only
+  posts dated on or before this one are eligible, never the post itself. The
+  top 8 above `LINKS.retrieval.floor` go to the model; if fewer than 3 clear it,
+  the whole eligible catalogue is offered instead.
+- **Haiku only chooses.** `eu.anthropic.claude-haiku-5-5` on Bedrock picks from
+  those lists and never writes a URL. The prompt insists on a genuine reference
+  to the earlier post's subject and prefers no suggestion to a doubtful one.
+- **Code validates.** An anchor must be 2 to 6 words, appear exactly once and sit
+  outside headings, code, links, images and `{{...}}`; at most one link per
+  target and per paragraph, and one per 300 words. A repo must be on the list of
+  `nakomis` public, non-fork repos fetched from GitHub, be named in the post
+  (its name, `owner/name` or a GitHub URL), not already be in `repos:`, and is
+  re-checked as `private === false`.
+- **Failure never blocks staging.** On any error the post is staged with no
+  suggestions and the reason is recorded (`suggestionsSummary.skippedReason`,
+  shown in the bag). Where the embeddings index is absent (the sandbox) the step
+  reports `skipped: no-embeddings-index`.
+- **Storage.** `{slug}/iteration-{n}/suggestions.json` in the drafts bucket, with
+  a small `suggestionsSummary` on the post row. `GET /posts/{slug}` returns it as
+  `suggestions`; `POST /posts/{slug}/suggestions` (`{"decisions": {"<id>":
+  "accepted" | "rejected" | "pending"}}`) records choices on a staged post.
+- **On approval.** Accepted links are written into the final draft in place
+  (S3 `If-Match`, one retry), so `promote-approved` commits them with the refined
+  body. Accepted repos are stored on the row as `approvedRepos`; `promote-approved.py`
+  in `blog-content` merges them into the author's `repos:` list. Undecided
+  suggestions are ignored, with a warning in the bag.
+
+Prerequisites: Titan Embed v2 and Haiku enabled in Bedrock in each account (the
+`anthropic.claude-haiku-5-5` model agreement must have been accepted), and for
+real suggestions the embeddings index present in `nakom.is-private[-sandbox]`.
+
+`infra/scripts/link-suggestions-eval.ts` (`npm run eval-links-prod -- <post.md>
+[--floor n] [--model id] [--watch slug-fragment]`) dry-runs the step against a
+real post, read-only, to calibrate the floor and check for false positives.
 
 ### Manual prerequisites
 

@@ -353,3 +353,119 @@
   padding: 0.75rem;
   border-radius: 4px;
 }
+
+/* ── Link and repo suggestions (PIPE-38) ─────────────────────────────── */
+.detail__notice--warn {
+  border-left: 3px solid #e5c07b;
+}
+
+.sugg-summary {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--panel);
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+.sugg-summary--empty {
+  color: var(--muted);
+}
+.sugg-summary h3 {
+  margin: 0.75rem 0 0.25rem;
+  font-size: 0.95rem;
+  color: var(--heading);
+}
+.sugg-summary ul {
+  margin: 0.25rem 0;
+  padding-left: 1.1rem;
+}
+.sugg-summary__dropped {
+  margin-top: 0.75rem;
+  color: var(--muted);
+}
+
+.btn--small {
+  padding: 0.15rem 0.55rem;
+  font-size: 0.8rem;
+}
+
+.sugg {
+  position: relative;
+  display: inline;
+}
+.sugg__mark {
+  background: rgba(229, 192, 123, 0.28);
+  color: inherit;
+  border-bottom: 2px dotted #e5c07b;
+  border-radius: 2px;
+  cursor: pointer;
+}
+.sugg__mark:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.sugg__mark--accepted {
+  background: rgba(152, 195, 121, 0.22);
+  border-bottom: 2px solid var(--accent);
+  color: var(--accent);
+  text-decoration: none;
+}
+.sugg__pop {
+  display: none;
+  position: absolute;
+  z-index: 10;
+  left: 0;
+  top: 100%;
+  min-width: 16rem;
+  max-width: 22rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--panel);
+  border: 1px solid var(--muted);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+.sugg:hover .sugg__pop,
+.sugg:focus-within .sugg__pop {
+  display: block;
+}
+.sugg__pop > * {
+  display: block;
+  margin-bottom: 0.3rem;
+}
+.sugg__title {
+  color: var(--heading);
+}
+.sugg__date {
+  color: var(--muted);
+}
+.sugg__actions {
+  display: flex !important;
+  gap: 0.4rem;
+  margin-bottom: 0;
+}
+
+.repo-sugg {
+  margin: 0.3rem 0;
+}
+.repo-sugg__why {
+  display: block;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.repo-sugg__why .repo-sugg__reason {
+  display: none;
+}
+.repo-sugg__why:hover .repo-sugg__reason,
+.repo-sugg__why:focus .repo-sugg__reason {
+  display: block;
+  color: var(--text);
+}
+.repo-sugg__actions {
+  display: inline-flex;
+  gap: 0.4rem;
+  margin-left: 0.5rem;
+}
+.repo-sugg--rejected {
+  opacity: 0.55;
+}

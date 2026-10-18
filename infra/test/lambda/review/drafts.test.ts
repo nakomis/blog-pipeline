@@ -12,6 +12,8 @@ import {
   putDraft,
   putReviews,
   draftExists,
+  getDraftWithEtag,
+  putDraftIfMatch,
 } from '../../../lambda/review/drafts';
 
 const s3Mock = mockClient(S3Client);
@@ -79,5 +81,45 @@ describe('draftExists', () => {
   test('rethrows errors other than NotFound', async () => {
     s3Mock.on(HeadObjectCommand).rejects(new Error('access denied'));
     await expect(draftExists('k')).rejects.toThrow('access denied');
+  });
+});
+
+describe('getDraftWithEtag', () => {
+  test('returns the body and its ETag', async () => {
+    s3Mock.on(GetObjectCommand).resolves({
+      Body: { transformToString: async () => 'body' } as never,
+      ETag: '"abc"',
+    });
+    await expect(getDraftWithEtag('k')).resolves.toEqual({ body: 'body', etag: '"abc"' });
+  });
+
+  test('throws when there is no body', async () => {
+    s3Mock.on(GetObjectCommand).resolves({});
+    await expect(getDraftWithEtag('k')).rejects.toThrow('no body');
+  });
+});
+
+describe('putDraftIfMatch', () => {
+  test('writes with If-Match and reports success', async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
+    await expect(putDraftIfMatch('k', 'md', '"abc"')).resolves.toBe(true);
+    expect(s3Mock.commandCalls(PutObjectCommand)[0].args[0].input).toMatchObject({
+      Key: 'k',
+      IfMatch: '"abc"',
+    });
+  });
+
+  test('returns false on 412 or PreconditionFailed so the caller can retry', async () => {
+    s3Mock.on(PutObjectCommand).rejectsOnce(
+      Object.assign(new Error('x'), { $metadata: { httpStatusCode: 412 } }),
+    );
+    await expect(putDraftIfMatch('k', 'md', '"abc"')).resolves.toBe(false);
+    s3Mock.on(PutObjectCommand).rejects(Object.assign(new Error('x'), { name: 'PreconditionFailed' }));
+    await expect(putDraftIfMatch('k', 'md', '"abc"')).resolves.toBe(false);
+  });
+
+  test('rethrows any other failure', async () => {
+    s3Mock.on(PutObjectCommand).rejects(new Error('boom'));
+    await expect(putDraftIfMatch('k', 'md', '"abc"')).rejects.toThrow('boom');
   });
 });

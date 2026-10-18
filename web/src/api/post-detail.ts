@@ -80,6 +80,60 @@ export interface RepoCheck {
   detail?: string;
 }
 
+/** Martin's call on one suggestion (PIPE-38). */
+export type SuggestionDecision = 'pending' | 'accepted' | 'rejected';
+
+/** A suggested link from the post to an earlier post. */
+export interface LinkSuggestion {
+  id: string;
+  kind: 'link';
+  /** The exact phrase in the post that would become the link text. */
+  anchorText: string;
+  /** Surrounding text, for display. */
+  context: string;
+  targetSlug: string;
+  targetTitle: string;
+  /** From the blog's own index — never from the model. */
+  targetUrl: string;
+  targetDate: string;
+  occurrence: { paragraph: number; offset: number };
+  /** Haiku's reason, shown on hover or focus. */
+  reason: string;
+  decision: SuggestionDecision;
+}
+
+/**
+ * A suggested `repos:` entry. `name` and `url` mirror the frontmatter list
+ * item shape so a frontmatter panel can render these beside the existing repos.
+ */
+export interface RepoSuggestion {
+  id: string;
+  kind: 'repo';
+  fullName: string;
+  name: string;
+  url: string;
+  description: string | null;
+  evidence: string;
+  reason: string;
+  source: 'llm' | 'url-in-post';
+  decision: SuggestionDecision;
+}
+
+/** Everything the link/repo suggestion step produced for a post. */
+export interface Suggestions {
+  version: 1;
+  slug: string;
+  iteration: number;
+  generatedAt: string;
+  /** `skipped` and `error` carry the reason in `skippedReason`; the post is staged regardless. */
+  status: 'ok' | 'skipped' | 'error';
+  skippedReason?: string;
+  models: { chat: string; embed: string };
+  links: LinkSuggestion[];
+  repos: RepoSuggestion[];
+  dropped: { kind: 'link' | 'repo'; value: string; reason: string }[];
+}
+
 /** The full detail bundle for one post — everything the bag renders. */
 export interface PostDetail {
   post: Post;
@@ -89,6 +143,8 @@ export interface PostDetail {
   images: ImageDetail[];
   /** Absent when the web app is deployed ahead of the API. */
   frontmatter?: FrontmatterInfo;
+  /** Optional so a web deploy ahead of the API still works (PIPE-38). */
+  suggestions?: Suggestions | null;
 }
 
 function authHeaders(idToken: string): Record<string, string> {
@@ -252,6 +308,34 @@ export interface DecisionResult {
   slug: string;
   decision: 'approve' | 'reject';
   status: string;
+  /** On approval: how many accepted suggestions were written (PIPE-38). */
+  applied?: { links: number; repos: number };
+  /** Accepted links that no longer fitted the text and were left out. */
+  skipped?: { id: string; reason: string }[];
+}
+
+/**
+ * Records accept / reject / pending choices for suggestions. Nothing is
+ * applied to the post until it is approved.
+ */
+export async function setSuggestionDecisions(
+  slug: string,
+  decisions: Record<string, SuggestionDecision>,
+  idToken: string,
+): Promise<Suggestions> {
+  const { apiUrl } = getConfig();
+  const response = await fetch(
+    `${apiUrl}/posts/${encodeURIComponent(slug)}/suggestions`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(idToken), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decisions }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to save suggestion choice (HTTP ${response.status})`);
+  }
+  return ((await response.json()) as { suggestions: Suggestions }).suggestions;
 }
 
 export interface PublishNowResult {

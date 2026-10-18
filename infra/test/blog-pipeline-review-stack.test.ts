@@ -160,7 +160,7 @@ describe('BlogPipelineReviewStack', () => {
     ).toContain('ReviewStateMachineAD9C5398');
   });
 
-  test('creates the six review Lambdas', () => {
+  test('creates the six review-loop Lambdas', () => {
     const template = synth(sandboxConfig);
     for (const name of [
       'load-draft',
@@ -174,6 +174,83 @@ describe('BlogPipelineReviewStack', () => {
         FunctionName: `blog-pipeline-review-${name}-sandbox`,
       });
     }
+  });
+
+  describe('link and repo suggestions (PIPE-38)', () => {
+    function definition(template: Template): {
+      States: Record<string, { Next?: string; Catch?: { Next: string }[]; TimeoutSeconds?: number; Choices?: { Next: string }[] }>;
+    } {
+      const machines = template.findResources('AWS::StepFunctions::StateMachine');
+      const raw = Object.values(machines)[0].Properties.DefinitionString;
+      const text = raw['Fn::Join']
+        ? (raw['Fn::Join'][1] as unknown[]).map((p) => (typeof p === 'string' ? p : 'X')).join('')
+        : raw;
+      return JSON.parse(text);
+    }
+
+    test('creates the suggest-links Lambda wired to the derived private bucket', () => {
+      synth(sandboxConfig).hasResourceProperties('AWS::Lambda::Function', {
+        FunctionName: 'blog-pipeline-review-suggest-links-sandbox',
+        Timeout: 120,
+        MemorySize: 1024,
+        Environment: {
+          Variables: Match.objectLike({
+            PRIVATE_BUCKET: 'nakom.is-private-sandbox',
+            EMBED_REGION: 'us-east-1',
+            GITHUB_OWNERS: '["nakomis"]',
+            POSTS_TABLE_NAME: Match.anyValue(),
+            DRAFTS_BUCKET: Match.anyValue(),
+          }),
+        },
+      });
+    });
+
+    test('derives the production private bucket without a suffix', () => {
+      synth(prodConfig).hasResourceProperties('AWS::Lambda::Function', {
+        FunctionName: 'blog-pipeline-review-suggest-links-prod',
+        Environment: {
+          Variables: Match.objectLike({ PRIVATE_BUCKET: 'nakom.is-private' }),
+        },
+      });
+    });
+
+    test('grants read on the one embeddings object and Titan invoke in the embed region', () => {
+      const template = synth(prodConfig);
+      template.hasResourceProperties('AWS::IAM::Policy', {
+        PolicyDocument: Match.objectLike({
+          Statement: Match.arrayWith([
+            Match.objectLike({
+              Sid: 'ReadEmbeddingsIndex',
+              Action: 's3:GetObject',
+              Resource: 'arn:aws:s3:::nakom.is-private/blog-embeddings.json',
+            }),
+            Match.objectLike({
+              Sid: 'EmbedWithTitan',
+              Action: 'bedrock:InvokeModel',
+              Resource:
+                'arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-text-v2:0',
+            }),
+          ]),
+        }),
+      });
+    });
+
+    test('runs SuggestLinks between a gate pass and SetOutcomePass', () => {
+      const states = definition(synth(sandboxConfig)).States;
+      const pass = states.DecideLoop.Choices?.find((c) => c.Next === 'SuggestLinks');
+      expect(pass).toBeDefined();
+      expect(states.SuggestLinks.Next).toBe('SetOutcomePass');
+      expect(states.SetOutcomePass.Next).toBe('ReviewComplete');
+    });
+
+    test('a failure or timeout still stages the post and never reaches HandleException', () => {
+      const states = definition(synth(sandboxConfig)).States;
+      expect(states.SuggestLinks.Catch).toEqual([
+        expect.objectContaining({ Next: 'SetOutcomePass' }),
+      ]);
+      expect(states.SuggestLinks.TimeoutSeconds).toBe(150);
+      expect(JSON.stringify(states.SuggestLinks.Catch)).not.toContain('HandleException');
+    });
   });
 
   test('publishes the state-machine ARN to SSM for PIPE-2', () => {

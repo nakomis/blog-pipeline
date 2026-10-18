@@ -336,6 +336,10 @@ export class ApiStack extends cdk.Stack {
     // Live GitHub visibility check for the post's `repos:` URLs (PIPE-37).
     post.addResource('repo-checks').addMethod('GET', apiIntegration, securedMethod);
     post.addResource('edit').addMethod('POST', apiIntegration, securedMethod);
+    // PIPE-38: accept / reject the link and repo suggestions.
+    post
+      .addResource('suggestions')
+      .addMethod('POST', apiIntegration, securedMethod);
     post
       .addResource('decision')
       .addMethod('POST', apiIntegration, securedMethod);
