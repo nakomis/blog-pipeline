@@ -7,7 +7,7 @@ import type {
 import { draftExists, draftKey, getDraft } from '../review/drafts';
 import { requireEnv } from '../review/runtime';
 import { readFrontmatter, parseRepos } from './frontmatter';
-import { optionalGithubToken } from './github';
+import { optionalGithubToken, resetGithubTokenCache } from './github';
 import { corsHeaders, jsonResponse } from './http';
 
 /**
@@ -62,16 +62,24 @@ async function checkOne(
   if (!full) {
     return { name, url, state: 'unchecked', detail: 'Not a GitHub repository URL' };
   }
-  try {
-    const response = await fetch(`https://api.github.com/repos/${full}`, {
+  const request = (bearer: string | undefined) =>
+    fetch(`https://api.github.com/repos/${full}`, {
       headers: {
         Accept: 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
         'User-Agent': 'blog-pipeline',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
       },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
+  try {
+    let response = await request(token);
+    if (response.status === 401 && token) {
+      // An expired or revoked token: forget it so a rotated one is re-read,
+      // and retry this lookup as the public would see it.
+      resetGithubTokenCache();
+      response = await request(undefined);
+    }
     if (response.status === 404) {
       return { name, url, state: 'not-found', detail: 'Private or does not exist' };
     }

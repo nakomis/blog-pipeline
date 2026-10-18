@@ -307,7 +307,7 @@ something needs a look. Warnings never block Approve or Reject:
 - `canonical` is not `<blog base URL>/<filename-without-.md>` (the base URL is
   `BLOG_BASE_URL` in `infra/lib/config.ts`);
 - `date` does not match the filename's date prefix;
-- `approved` is set in the author's frontmatter but the post has not been approved in the bag;
+- `approved` is set in the source but the post has not been approved in this review round;
 - the staged version's frontmatter differs from the author's (promotion keeps the author's);
 - a `repos:` URL is private or 404s on GitHub.
 

@@ -121,11 +121,16 @@ describe('ApiStack', () => {
     template.hasResourceProperties('AWS::ApiGateway::Resource', {
       PathPart: 'repo-checks',
     });
+    const resources = template.findResources('AWS::ApiGateway::Resource', {
+      Properties: { PathPart: 'repo-checks' },
+    });
+    const ids = Object.keys(resources);
+    expect(ids).toHaveLength(1);
     template.hasResourceProperties('AWS::ApiGateway::Method', {
       HttpMethod: 'GET',
+      ResourceId: { Ref: ids[0] },
       ApiKeyRequired: true,
       AuthorizationType: 'COGNITO_USER_POOLS',
-      ResourceId: Match.anyValue(),
     });
     template.hasResourceProperties('AWS::Lambda::Function', {
       FunctionName: 'blog-pipeline-api-sandbox',

@@ -287,7 +287,7 @@ export function checkFrontmatter(input: CheckInput): FrontmatterWarning[] {
       code: 'approved-by-hand',
       field: 'approved',
       message:
-        "'approved' is set in the author's frontmatter but the post has not been approved in the bag.",
+        "'approved' is set in the source, but this post hasn't been approved in this review round.",
     });
   }
 

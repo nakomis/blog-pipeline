@@ -38,7 +38,7 @@ export async function optionalGithubToken(): Promise<string | undefined> {
   }
 }
 
-/** Test hook: forget the cached token. */
+/** Forget the cached token: on a 401 (so a rotated token is re-read), and in tests. */
 export function resetGithubTokenCache(): void {
   cachedToken = undefined;
 }

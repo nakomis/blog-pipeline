@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import FrontmatterPanel, { reposOf } from './FrontmatterPanel';
 import {
   fetchRepoChecks,
   type FrontmatterInfo,
+  type RepoCheck,
 } from '../api/post-detail';
 
 vi.mock('../api/post-detail');
@@ -177,20 +178,67 @@ describe('FrontmatterPanel', () => {
       expect(mockedChecks).not.toHaveBeenCalled();
     });
 
-    test('ignores a result that arrives after unmount', async () => {
-      let resolve: (v: never[]) => void = () => undefined;
-      mockedChecks.mockReturnValue(new Promise((r) => (resolve = r)));
-      const { unmount } = renderPanel(withRepos());
-      unmount();
-      resolve([]);
-      await waitFor(() => expect(mockedChecks).toHaveBeenCalledTimes(1));
+    test('ignores a result that arrives after the panel is replaced', async () => {
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      let resolve: (v: RepoCheck[]) => void = () => undefined;
+      mockedChecks.mockReturnValueOnce(new Promise((r) => (resolve = r)));
+      // A new slug re-runs the effect; the first request's cleanup cancels it.
+      const { rerender } = renderPanel(withRepos());
+      mockedChecks.mockResolvedValueOnce([
+        { name: 'claude-chats', url: 'https://github.com/nakomis/claude-chats', state: 'private' },
+      ]);
+      rerender(<FrontmatterPanel frontmatter={withRepos()} slug="q" idToken="tok" />);
+      expect(await screen.findByText('private')).toBeInTheDocument();
+
+      // The stale request now resolves with a different answer: it must be dropped.
+      await act(async () => {
+        resolve([
+          { name: 'claude-chats', url: 'https://github.com/nakomis/claude-chats', state: 'ok' },
+        ]);
+      });
+      expect(screen.queryByText('public')).not.toBeInTheDocument();
+      expect(screen.getByText('private')).toBeInTheDocument();
+      errors.mockRestore();
     });
 
-    test('non-http URLs are not linked', () => {
+    test('does not update state after unmount', async () => {
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      let resolve: (v: RepoCheck[]) => void = () => undefined;
+      mockedChecks.mockReturnValue(new Promise((r) => (resolve = r)));
+      const { unmount, container } = renderPanel(withRepos());
+      unmount();
+      await act(async () => {
+        resolve([]);
+      });
+      expect(container).toBeEmptyDOMElement();
+      expect(errors).not.toHaveBeenCalled();
+      errors.mockRestore();
+    });
+
+    test('matches a check to a repo whose URL has surrounding whitespace', async () => {
+      mockedChecks.mockResolvedValue([
+        { name: 'odd', url: 'https://github.com/o/odd', state: 'ok' },
+      ]);
+      renderPanel(
+        info({ fields: { title: 'T', repos: [{ name: 'odd', url: ' https://github.com/o/odd ' }] } }),
+      );
+      expect(await screen.findByText('public')).toBeInTheDocument();
+    });
+
+    test('duplicate tags render without a key clash', () => {
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      renderPanel(info({ fields: { title: 'T', tags: ['a', 'a'] } }));
+      expect(screen.getAllByText('a')).toHaveLength(2);
+      expect(errors).not.toHaveBeenCalled();
+      errors.mockRestore();
+    });
+
+    test('non-http URLs are not linked', async () => {
       mockedChecks.mockResolvedValue([]);
       renderPanel(
         info({ fields: { title: 'T', repos: [{ name: 'odd', url: 'javascript:alert(1)' }] } }),
       );
+      await act(async () => undefined);
       expect(screen.queryByRole('link', { name: 'odd' })).not.toBeInTheDocument();
       expect(screen.getAllByText('odd').length).toBeGreaterThan(0);
     });

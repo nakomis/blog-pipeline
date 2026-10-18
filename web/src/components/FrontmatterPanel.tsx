@@ -50,7 +50,8 @@ export function reposOf(
       typeof entry.name === 'string' &&
       typeof entry.url === 'string'
     ) {
-      repos.push({ name: entry.name, url: entry.url });
+      // Trimmed like the API's copy, so the two match when looking up a check.
+      repos.push({ name: entry.name, url: entry.url.trim() });
     }
   }
   return repos;
@@ -121,8 +122,8 @@ function ValueView({ name, value }: { name: string; value: FrontmatterValue }) {
   if (Array.isArray(value) && value.every((v) => typeof v === 'string')) {
     return (
       <span className="frontmatter__chips">
-        {(value as string[]).map((v) => (
-          <span key={v} className="frontmatter__chip">
+        {(value as string[]).map((v, i) => (
+          <span key={`${i}-${v}`} className="frontmatter__chip">
             {v}
           </span>
         ))}

@@ -172,7 +172,9 @@ describe('checkFrontmatter', () => {
   });
   test('frontmatter-changed when the staged copy differs or drops it', () => {
     const same = readFrontmatter(POST);
-    const reordered = { ...same.fields!, title: same.fields!.title };
+    const original = same.fields!;
+    // Same content, keys inserted in the opposite order.
+    const reordered = Object.fromEntries(Object.entries(original).reverse());
     expect(run({ finalRead: { present: true, fields: reordered } })).toEqual([]);
     expect(
       run({ finalRead: { present: true, fields: { ...same.fields!, title: 'Other' } } })[0].code,

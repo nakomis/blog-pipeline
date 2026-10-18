@@ -104,7 +104,8 @@ async function main(): Promise<void> {
       TableName: tableName,
       Item: {
         slug,
-        sourceFile: `${now.slice(0, 10)}-${slug}.md`,
+        // The date matches the seed draft's own `date:` frontmatter.
+        sourceFile: `2026-05-22-${slug}.md`,
         status: 'queued',
         title: 'Why I Use Git Worktrees',
         summary:

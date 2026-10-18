@@ -41,6 +41,8 @@ function reply(status: number, body: unknown = {}) {
   return { status, json: async () => body };
 }
 
+const realFetch = (global as unknown as { fetch: unknown }).fetch;
+
 beforeEach(() => {
   ddbMock.reset();
   s3Mock.reset();
@@ -56,6 +58,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  (global as unknown as { fetch: unknown }).fetch = realFetch;
+  jest.restoreAllMocks();
   delete process.env.GITHUB_DISPATCH_SECRET_ARN;
 });
 
@@ -143,11 +147,53 @@ describe('repoChecks', () => {
     expect(secretsMock.commandCalls(GetSecretValueCommand)).toHaveLength(1);
   });
 
-  test('a network failure or timeout is an error, not a throw', async () => {
+  test('a network failure is an error, not a throw', async () => {
     setDraft(draft([['a', 'https://github.com/o/a']]));
-    fetchMock.mockRejectedValue(new Error('timeout'));
+    fetchMock.mockRejectedValue(new Error('network down'));
     const res = await repoChecks(event('p'));
     expect(JSON.parse(res.body).repos[0]).toMatchObject({ state: 'error' });
+  });
+
+  test('requests carry an abort signal, and its timeout is an error', async () => {
+    setDraft(draft([['a', 'https://github.com/o/a']]));
+    const timeoutSpy = jest.spyOn(AbortSignal, 'timeout');
+    fetchMock.mockImplementation(async (_url: string, init: { signal: AbortSignal }) => {
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+      throw new DOMException('The operation timed out', 'TimeoutError');
+    });
+    const res = await repoChecks(event('p'));
+    expect(timeoutSpy).toHaveBeenCalledWith(5000);
+    expect(JSON.parse(res.body).repos[0]).toMatchObject({
+      state: 'error',
+      detail: 'Could not reach GitHub',
+    });
+  });
+
+  test('a 401 drops the cached token and retries once unauthenticated', async () => {
+    setDraft(draft([['a', 'https://github.com/o/a']]));
+    fetchMock.mockImplementation(async (_url: string, init: { headers: Record<string, string> }) =>
+      init.headers.Authorization ? reply(401) : reply(200, { private: false }),
+    );
+    const res = await repoChecks(event('p'));
+    expect(JSON.parse(res.body).repos[0].state).toBe('ok');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer tok-123');
+    expect(fetchMock.mock.calls[1][1].headers).not.toHaveProperty('Authorization');
+
+    // The bad token was forgotten, so the next request re-reads the secret.
+    secretsMock.on(GetSecretValueCommand).resolves({ SecretString: 'rotated' });
+    await repoChecks(event('p'));
+    expect(secretsMock.commandCalls(GetSecretValueCommand)).toHaveLength(2);
+    expect(fetchMock.mock.calls[2][1].headers.Authorization).toBe('Bearer rotated');
+  });
+
+  test('a 401 without a token is just an error (no retry)', async () => {
+    setDraft(draft([['a', 'https://github.com/o/a']]));
+    delete process.env.GITHUB_DISPATCH_SECRET_ARN;
+    fetchMock.mockResolvedValue(reply(401));
+    const res = await repoChecks(event('p'));
+    expect(JSON.parse(res.body).repos[0].state).toBe('error');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   test('checks only the first ten repositories', async () => {
