@@ -113,6 +113,16 @@ describe('ApiStack', () => {
     });
   });
 
+  test('the affiliates route exists and is secured (PIPE-41)', () => {
+    template.hasResourceProperties('AWS::ApiGateway::Resource', { PathPart: 'affiliates' });
+    const methods = Object.values(
+      template.findResources('AWS::ApiGateway::Method', {
+        Properties: { HttpMethod: 'POST', ApiKeyRequired: true, AuthorizationType: 'COGNITO_USER_POOLS' },
+      }),
+    );
+    expect(methods.length).toBeGreaterThanOrEqual(5);
+  });
+
   test('the failed-post edit routes exist and are secured (PIPE-36)', () => {
     for (const part of ['markdown', 'rereview']) {
       template.hasResourceProperties('AWS::ApiGateway::Resource', {

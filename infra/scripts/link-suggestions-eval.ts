@@ -3,7 +3,7 @@
  *
  *   AWS_PROFILE=nakom.is-admin NPM_ENVIRONMENT=prod AWS_REGION=eu-west-2 \
  *     npx ts-node scripts/link-suggestions-eval.ts <path-to-post.md> [--floor 0.45] [--model <anthropic-model-id>] [--watch <slug-fragment>]
- *     [--forbid <slug-fragment>] [--also-catalogue]
+ *     [--forbid <slug-fragment>] [--also-catalogue] [--products-only]
  *
  * Read-only: it reads the embeddings index, calls Titan and Haiku, and lists
  * public GitHub repos, then prints what it would suggest. Nothing is written to
@@ -12,6 +12,9 @@
  * resembles an earlier one (e.g. the Alexa announce post and the Cabal) gets no
  * false link. `--model` swaps the Anthropic model for the Haiku call (for example
  * to compare models). Needs AWS credentials for S3, Titan and the SSM key.
+ *
+ * The affiliate product pass (PIPE-41) is printed too. `--products-only` runs
+ * just that pass (no embeddings, Titan or GitHub calls).
  *
  * False-positive check: `--forbid <fragment>` fails the run (exit code 2) if any
  * suggested link targets a post whose slug contains the fragment, and
@@ -41,6 +44,7 @@ async function main(): Promise<void> {
   const forbidArg = process.argv.indexOf('--forbid');
   const forbid = forbidArg !== -1 ? process.argv[forbidArg + 1] : undefined;
   const alsoCatalogue = process.argv.includes('--also-catalogue');
+  const productsOnly = process.argv.includes('--products-only');
   const watchArg = process.argv.indexOf('--watch');
   const watch = watchArg !== -1 ? process.argv[watchArg + 1] : undefined;
 
@@ -55,6 +59,11 @@ async function main(): Promise<void> {
   const markdown = fs.readFileSync(file, 'utf8');
   const slug = path.basename(file, '.md').replace(/^\d{4}-\d{2}-\d{2}-/, '');
   const deps = defaultDeps();
+  if (productsOnly) {
+    // Skip the link and repo half: no index means no Titan, no link call.
+    deps.loadIndex = async () => null;
+    deps.listRepos = async () => [];
+  }
   if (modelId) {
     const [{ createAnthropic }, { generateObject }, { Picks }, { readParameterJson }] =
       await Promise.all([
@@ -113,6 +122,10 @@ async function main(): Promise<void> {
     console.log(`\nREPO SUGGESTIONS (${result.repos.length}):`);
     for (const r of result.repos) {
       console.log(`  ${r.fullName} [${r.source}]\n    why: ${r.reason}\n    evidence: ${r.evidence}`);
+    }
+    console.log(`\nAFFILIATE PRODUCT MENTIONS (${(result.affiliates ?? []).length}) [${result.affiliatesStatus}${result.affiliatesReason ? `: ${result.affiliatesReason}` : ''}]:`);
+    for (const a of result.affiliates ?? []) {
+      console.log(`  "${a.anchorText}" (${a.productName})\n    why: ${a.reason}\n    sentence: ${a.quote}`);
     }
     console.log(`\nDROPPED BY VALIDATION (${result.dropped.length}):`);
     for (const d of result.dropped) {

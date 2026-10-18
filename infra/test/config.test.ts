@@ -191,3 +191,28 @@ describe('link and repo suggestions config (PIPE-38)', () => {
     expect(LINKS.model).toBe('claude-haiku-5-5');
   });
 });
+
+describe('AFFILIATE (PIPE-41)', () => {
+  const { AFFILIATE } = jest.requireActual('../lib/config');
+  test('the tag pattern accepts the store id and per-post ids only', () => {
+    const tag = new RegExp(AFFILIATE.tagPattern);
+    for (const ok of ['nakomis-21', 'nakomis-bconn66-21', 'nakomis-esp32-s3-21']) {
+      expect(tag.test(ok)).toBe(true);
+    }
+    for (const bad of ['other-21', 'nakomis-22', 'nakomis--21', 'Nakomis-21', 'nakomis-21x']) {
+      expect(tag.test(bad)).toBe(false);
+    }
+  });
+
+  test('the tracking id pattern rejects the bare store id', () => {
+    const id = new RegExp(AFFILIATE.trackingIdPattern);
+    expect(id.test('nakomis-bconn66-21')).toBe(true);
+    expect(id.test('nakomis-21')).toBe(false);
+  });
+
+  test('short-link hosts are never accepted hosts', () => {
+    for (const host of AFFILIATE.shortHosts) {
+      expect(AFFILIATE.hosts).not.toContain(host);
+    }
+  });
+});

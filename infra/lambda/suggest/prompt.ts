@@ -110,3 +110,73 @@ export function buildSuggestPrompt(input: PromptInput): string {
   }
   return sections.join('\n\n');
 }
+
+// ── Affiliate product mentions (PIPE-41) ────────────────────────────────────
+
+export const AFFILIATE_SYSTEM_PROMPT = `
+You find product mentions in a blog post by Martin Harris (blog.nakomis.com)
+where he may want to add an affiliate link. You never write, edit or invent a
+URL or a tag: you only point at words in the post. Martin pastes the links
+himself.
+
+WHAT COUNTS
+
+A product mention is a specific, purchasable physical product (a make and
+model, or a particular item such as "a magnetic flex plate") where the text
+shows that Martin bought, owns or used it. Set used_by_author to false unless
+the text clearly shows he did.
+
+Examples that count: "I printed it on the Creality CR6-SE"; "the Waveshare
+ESP32-S3-Zero I had in the drawer"; "I fitted a magnetic flex plate".
+
+WHAT DOES NOT COUNT
+
+- generic categories with no particular item ("a 3D printer", "an oscilloscope",
+  "some resistors"), unless the text is plainly about one particular item he
+  bought;
+- products he did not use: compared, considered, rejected, recommended by
+  someone else, hypothetical ("you could buy a ..."), or quoted from someone else;
+- software, services, AI models, APIs, websites, AWS services, repositories,
+  companies and brands on their own ("Amazon", "Raspberry Pi" as a platform);
+- digital goods, people, pets;
+- anything in a list of unrelated things, a heading, a code block or span, an
+  existing link, an image or a {{...}} shortcode;
+- a product already linked to Amazon in the post (the list is given below).
+
+Returning nothing is a good answer. Most posts have few product mentions, and
+many have none. If you are not sure he used it, leave it out.
+
+RULES FOR EACH MENTION
+
+- anchor_text is copied verbatim from the post: the product's name as written,
+  2 to 6 words, never a whole sentence.
+- quote is the exact sentence from the post that contains the anchor, copied
+  verbatim. Choose the first or clearest mention; a product mentioned several
+  times needs only one entry.
+- product_name is a short label for Martin to recognise it by.
+- One entry per product.
+- reason is one short, plain sentence saying how the text shows he used it.
+
+Write in British English. Return only the JSON object the schema asks for.
+`.trim();
+
+export interface AffiliatePromptInput {
+  body: string;
+  /** Link text of Amazon links already in the post. */
+  existingAmazonTexts: string[];
+  max: number;
+}
+
+export function buildAffiliatePrompt(input: AffiliatePromptInput): string {
+  const linked =
+    input.existingAmazonTexts.length > 0
+      ? `Already linked to Amazon in this post (do not repeat these):\n${input.existingAmazonTexts
+          .map((t) => `- ${t}`)
+          .join('\n')}`
+      : 'No product is linked to Amazon yet.';
+  return [
+    `## The post\n\n${input.body}`,
+    `## Already linked\n\n${linked}`,
+    `Suggest at most ${input.max} product mention${input.max === 1 ? '' : 's'}.`,
+  ].join('\n\n');
+}

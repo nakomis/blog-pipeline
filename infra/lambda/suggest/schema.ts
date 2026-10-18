@@ -42,6 +42,48 @@ export type LinkPick = z.infer<typeof LinkPick>;
 export type RepoPick = z.infer<typeof RepoPick>;
 export type Picks = z.infer<typeof Picks>;
 
+/** A product mention the model found (PIPE-41). It never supplies a URL or a tag. */
+export const ProductPick = z.object({
+  /** Exact phrase to become the link text, 2 to 6 words. */
+  anchor_text: z.string(),
+  /** The exact sentence from the post that contains the anchor. */
+  quote: z.string(),
+  /** Short label shown in the bag, e.g. "Creality CR6-SE printer". */
+  product_name: z.string(),
+  /** The model's own check that Martin bought, owns or used it; code drops false. */
+  used_by_author: z.boolean(),
+  reason: z.string().default(''),
+});
+
+export const ProductPicks = z.object({
+  products: z.array(ProductPick).default([]),
+});
+
+export type ProductPick = z.infer<typeof ProductPick>;
+export type ProductPicks = z.infer<typeof ProductPicks>;
+
+export type AffiliateDecision = 'pending' | 'linked' | 'skipped';
+
+export interface AffiliateMention {
+  /** sha1('product' + NUL + lowercase anchorText), first 12 hex. */
+  id: string;
+  kind: 'affiliate';
+  anchorText: string;
+  productName: string;
+  /** The sentence, for display. */
+  quote: string;
+  /** Up to AFFILIATE.locatorChars either side of the anchor, same paragraph. */
+  before: string;
+  after: string;
+  occurrence: { paragraph: number; offset: number };
+  reason: string;
+  decision: AffiliateDecision;
+  /** Exactly as pasted; set only when decision is 'linked'. */
+  url?: string;
+  /** From validating the pasted link. */
+  warnings?: string[];
+}
+
 export type Decision = 'pending' | 'accepted' | 'rejected';
 
 export interface LinkSuggestion {
@@ -80,7 +122,7 @@ export interface RepoSuggestion {
 }
 
 export interface DroppedSuggestion {
-  kind: 'link' | 'repo';
+  kind: 'link' | 'repo' | 'affiliate';
   value: string;
   reason: string;
 }
@@ -96,6 +138,12 @@ export interface Suggestions {
   links: LinkSuggestion[];
   repos: RepoSuggestion[];
   dropped: DroppedSuggestion[];
+  /** Product mentions needing an affiliate link (PIPE-41). Absent in older files. */
+  affiliates?: AffiliateMention[];
+  affiliatesStatus?: 'ok' | 'skipped' | 'error';
+  affiliatesReason?: string;
+  /** A per-post tracking id typed in the bag when the source file has none. */
+  trackingId?: string;
 }
 
 /** The small summary kept on the post row (`suggestionsSummary`). */
@@ -107,6 +155,9 @@ export interface SuggestionsSummary {
   repos: number;
   undecided: number;
   generatedAt: string;
+  affiliates?: number;
+  affiliatesUndecided?: number;
+  affiliatesStatus?: 'ok' | 'skipped' | 'error';
 }
 
 /** An earlier post the model may link to. */

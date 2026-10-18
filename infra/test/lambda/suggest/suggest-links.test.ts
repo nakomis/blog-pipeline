@@ -2,7 +2,7 @@ import type { IndexRecord } from '../../../lambda/suggest/embeddings';
 import { IndexIncompatibleError } from '../../../lambda/suggest/embeddings';
 import { generateSuggestions, run } from '../../../lambda/suggest/suggest-links';
 import type { Deps } from '../../../lambda/suggest/suggest-links';
-import type { Picks, RepoInfo, Suggestions } from '../../../lambda/suggest/schema';
+import type { Picks, ProductPicks, RepoInfo, Suggestions } from '../../../lambda/suggest/schema';
 
 function unit(values: number[]): Float32Array {
   const norm = Math.sqrt(values.reduce((s, v) => s + v * v, 0));
@@ -54,6 +54,7 @@ The Alexa tool lives in mcps now.
 `;
 
 const EMPTY_PICKS: Picks = { links: [], repos: [] };
+const NO_PRODUCTS: ProductPicks = { products: [] };
 
 function makeDeps(over: Partial<Deps> = {}): Deps & { puts: Suggestions[] } {
   const puts: Suggestions[] = [];
@@ -64,6 +65,7 @@ function makeDeps(over: Partial<Deps> = {}): Deps & { puts: Suggestions[] } {
     embedTexts: jest.fn().mockImplementation(async (texts: string[]) => texts.map(() => unit([1, 0]))),
     listRepos: jest.fn().mockResolvedValue([MCPS]),
     pick: jest.fn().mockResolvedValue(EMPTY_PICKS),
+    pickProducts: jest.fn().mockResolvedValue(NO_PRODUCTS),
     getPrevious: jest.fn().mockResolvedValue(null),
     put: jest.fn().mockImplementation(async (s: Suggestions) => {
       puts.push(s);
@@ -198,6 +200,151 @@ describe('an oversized model answer', () => {
   });
 });
 
+const PRODUCT_MD = `---
+title: "A post"
+date: "2026-10-18"
+---
+
+I asked the Cabal what it thought of the draft.
+
+I printed the lid on the Creality CR6-SE and it came out well. The Creality CR6-SE is loud.
+`;
+const CR6 = {
+  anchor_text: 'Creality CR6-SE',
+  quote: 'I printed the lid on the Creality CR6-SE and it came out well.',
+  product_name: 'Creality CR6-SE printer',
+  used_by_author: true,
+  reason: 'He printed on it.',
+};
+const withProducts = (products: unknown[]) => jest.fn().mockResolvedValue({ products });
+
+describe('affiliate product mentions (PIPE-41)', () => {
+  test('are found and validated', async () => {
+    const deps = makeDeps({
+      getDraft: jest.fn().mockResolvedValue(PRODUCT_MD),
+      pickProducts: withProducts([CR6, { ...CR6, anchor_text: 'Nope', quote: 'Not in the post.' }]),
+    });
+    const out = await generateSuggestions({ ...EVENT, markdown: PRODUCT_MD }, deps);
+    expect(out.affiliatesStatus).toBe('ok');
+    expect(out.affiliates).toHaveLength(1);
+    expect(out.affiliates?.[0]).toMatchObject({ anchorText: 'Creality CR6-SE', decision: 'pending' });
+    expect(out.dropped.some((d) => d.kind === 'affiliate')).toBe(true);
+    const prompt = (deps.pickProducts as jest.Mock).mock.calls[0][1] as string;
+    expect(prompt).toContain('Creality CR6-SE');
+    expect(prompt).toContain('No product is linked to Amazon yet');
+  });
+
+  test('the prompt lists Amazon links already in the post', async () => {
+    const md = `${PRODUCT_MD}\nAlso a [flex plate](https://www.amazon.co.uk/dp/B0AAAAAAAA?tag=nakomis-21).\n`;
+    const deps = makeDeps();
+    await generateSuggestions({ ...EVENT, markdown: md }, deps);
+    expect((deps.pickProducts as jest.Mock).mock.calls[0][1]).toContain('- flex plate');
+  });
+
+  test('run when the embeddings index is missing (sandbox)', async () => {
+    const deps = makeDeps({
+      loadIndex: jest.fn().mockResolvedValue(null),
+      pickProducts: withProducts([CR6]),
+    });
+    const out = await generateSuggestions({ ...EVENT, markdown: PRODUCT_MD }, deps);
+    expect(out).toMatchObject({ status: 'skipped', skippedReason: 'no-embeddings-index', affiliatesStatus: 'ok' });
+    expect(out.affiliates).toHaveLength(1);
+  });
+
+  test('run when there are no link candidates and no named repos', async () => {
+    const deps = makeDeps({
+      loadIndex: jest.fn().mockResolvedValue([record('2026-12-01-future', '2026-12-01', [1, 0])]),
+      listRepos: jest.fn().mockResolvedValue([]),
+      pickProducts: withProducts([CR6]),
+    });
+    const out = await generateSuggestions({ ...EVENT, markdown: PRODUCT_MD }, deps);
+    expect(out).toMatchObject({ skippedReason: 'no-candidates', affiliatesStatus: 'ok' });
+    expect(out.affiliates).toHaveLength(1);
+    expect(deps.pick).not.toHaveBeenCalled();
+  });
+
+  test('a product call failure leaves the links intact', async () => {
+    const deps = makeDeps({
+      pick: jest.fn().mockResolvedValue({
+        links: [{ anchor_text: 'the Cabal', target_slug: CABAL_SLUG, same_subject: true, reason: 'r' }],
+        repos: [],
+      }),
+      pickProducts: jest.fn().mockRejectedValue(new Error('overloaded')),
+    });
+    const out = await generateSuggestions({ ...EVENT, markdown: PRODUCT_MD }, deps);
+    expect(out.status).toBe('ok');
+    expect(out.links).toHaveLength(1);
+    expect(out).toMatchObject({ affiliatesStatus: 'error', affiliates: [] });
+    expect(out.affiliatesReason).toContain('overloaded');
+  });
+
+  test('a link call failure leaves the affiliates intact', async () => {
+    const deps = makeDeps({
+      pick: jest.fn().mockRejectedValue(new Error('throttled')),
+      pickProducts: withProducts([CR6]),
+    });
+    const out = await generateSuggestions({ ...EVENT, markdown: PRODUCT_MD }, deps);
+    expect(out).toMatchObject({ status: 'error', affiliatesStatus: 'ok' });
+    expect(out.skippedReason).toContain('throttled');
+    expect(out.affiliates).toHaveLength(1);
+  });
+
+  test('both failing still gives a file and a normal return', async () => {
+    const deps = makeDeps({
+      getDraft: jest.fn().mockResolvedValue(PRODUCT_MD),
+      pick: jest.fn().mockRejectedValue(new Error('a')),
+      pickProducts: jest.fn().mockRejectedValue(new Error('b')),
+    });
+    const out = await run(EVENT, deps);
+    expect(out.suggestions).toMatchObject({ status: 'error', affiliatesStatus: 'error' });
+    expect(deps.puts[0].affiliatesStatus).toBe('error');
+  });
+
+  test('a product must not overlap a suggested link', async () => {
+    const md = `---\ndate: "2026-10-18"\n---\n\nI asked the Cabal about the Creality CR6-SE today.\n`;
+    const deps = makeDeps({
+      pick: jest.fn().mockResolvedValue({
+        links: [{ anchor_text: 'the Cabal about the Creality', target_slug: CABAL_SLUG, same_subject: true, reason: 'r' }],
+        repos: [],
+      }),
+      pickProducts: withProducts([
+        { ...CR6, quote: 'I asked the Cabal about the Creality CR6-SE today.' },
+      ]),
+    });
+    const out = await generateSuggestions({ ...EVENT, markdown: md }, deps);
+    // The link anchor is over 6 words? no: 5 words, so it is accepted and the product overlaps it.
+    expect(out.links).toHaveLength(1);
+    expect(out.affiliates).toEqual([]);
+  });
+
+  test('an empty body is skipped for affiliates', async () => {
+    const deps = makeDeps();
+    const out = await generateSuggestions({ ...EVENT, markdown: '---\ndate: "2026-10-18"\n---\n' }, deps);
+    expect(out.affiliatesStatus).toBe('skipped');
+    expect(deps.pickProducts).not.toHaveBeenCalled();
+  });
+
+  test('decisions and pasted links carry across a regeneration, and the summary counts them', async () => {
+    const first = makeDeps({ getDraft: jest.fn().mockResolvedValue(PRODUCT_MD), pickProducts: withProducts([CR6]) });
+    await run(EVENT, first);
+    expect(first.puts[0].affiliates).toHaveLength(1);
+    const previous = {
+      ...first.puts[0],
+      trackingId: 'nakomis-x-21',
+      affiliates: first.puts[0].affiliates?.map((a) => ({ ...a, decision: 'linked' as const, url: 'https://u' })),
+    };
+    const second = makeDeps({
+      getDraft: jest.fn().mockResolvedValue(PRODUCT_MD),
+      pickProducts: withProducts([CR6]),
+      getPrevious: jest.fn().mockResolvedValue(previous),
+    });
+    const out = await run({ ...EVENT, iteration: 3 }, second);
+    expect(second.puts[0].affiliates?.[0]).toMatchObject({ decision: 'linked', url: 'https://u' });
+    expect(second.puts[0].trackingId).toBe('nakomis-x-21');
+    expect(out.suggestions).toMatchObject({ affiliates: 1, affiliatesUndecided: 0, affiliatesStatus: 'ok' });
+  });
+});
+
 describe('run', () => {
   test('stores the suggestions and the row summary', async () => {
     const deps = makeDeps({
@@ -274,6 +421,11 @@ describe('defaultDeps wiring', () => {
     const deps = defaultDeps();
 
     await expect(deps.pick('sys', 'prompt')).resolves.toEqual({ links: [], repos: [] });
+    generateObject.mockResolvedValueOnce({ object: { products: [] } });
+    await expect(deps.pickProducts('sys2', 'prompt2')).resolves.toEqual({ products: [] });
+    expect(generateObject).toHaveBeenLastCalledWith(
+      expect.objectContaining({ system: 'sys2', prompt: 'prompt2', model: { id: 'haiku' } }),
+    );
     expect(generateObject).toHaveBeenCalledWith(
       expect.objectContaining({ system: 'sys', prompt: 'prompt', model: { id: 'haiku' } }),
     );

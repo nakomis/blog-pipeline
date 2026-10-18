@@ -1,4 +1,4 @@
-import { applyLinkSuggestions, mergeDecisions, undecidedCount } from '../../../lambda/suggest/apply';
+import { applyLinkSuggestions, mergeDecisions, undecidedAffiliates, undecidedCount } from '../../../lambda/suggest/apply';
 import type { Suggestions } from '../../../lambda/suggest/schema';
 
 const URL_A = 'https://blog.nakomis.com/2026-07-29-cabal';
@@ -136,4 +136,91 @@ test('undecidedCount counts pending links and repos', () => {
   const s = suggestions();
   s.links[0].decision = 'accepted';
   expect(undecidedCount(s)).toBe(1);
+});
+
+describe('applyLinkSuggestions with a locator (PIPE-41)', () => {
+  const AMZ = 'https://www.amazon.co.uk/dp/B0F4D8ZY6L?tag=nakomis-bconn7-21';
+  const md = `${FM}\nI printed on the Mars 5 Ultra today.\n\nThe Mars 5 Ultra was loud. Then the Mars 5 Ultra jammed.\n`;
+  const aff = (before: string, after: string, over = {}) => ({
+    id: 'p',
+    anchorText: 'Mars 5 Ultra',
+    targetUrl: AMZ,
+    locator: { before, after },
+    ...over,
+  });
+
+  test('links the right one of several identical anchors', () => {
+    const out = applyLinkSuggestions(md, [aff('I printed on the ', ' today.')]);
+    expect(out.skipped).toEqual([]);
+    expect(out.markdown).toBe(md.replace('on the Mars 5 Ultra today', `on the [Mars 5 Ultra](${AMZ}) today`));
+  });
+
+  test('skips when the locator is gone or ambiguous', () => {
+    const gone = applyLinkSuggestions(md, [aff('I printed on a ', ' today.')]);
+    expect(gone.applied).toEqual([]);
+    expect(gone.skipped[0].reason).toMatch(/text around the anchor has changed/);
+    const ambiguous = applyLinkSuggestions(md, [aff('the ', ' ')]);
+    expect(ambiguous.applied).toEqual([]);
+    expect(ambiguous.skipped[0].reason).toMatch(/text around the anchor has changed/);
+  });
+
+  test('without a locator behaviour is unchanged: repeated anchors are skipped', () => {
+    const out = applyLinkSuggestions(md, [aff('', '', { locator: undefined })]);
+    expect(out.skipped[0].reason).toMatch(/more than once/);
+  });
+
+  test('applies an affiliate link and a post link together, and is idempotent', () => {
+    const both = `${FM}\nI asked the Cabal, then printed on the Mars 5 Ultra today.\n`;
+    const out = applyLinkSuggestions(both, [
+      link('a', 'the Cabal', URL_A),
+      aff('then printed on the ', ' today.'),
+    ]);
+    expect(out.markdown).toContain(`[the Cabal](${URL_A})`);
+    expect(out.markdown).toContain(`[Mars 5 Ultra](${AMZ})`);
+    const again = applyLinkSuggestions(out.markdown, [aff('then printed on the ', ' today.')]);
+    expect(again.applied).toEqual([]);
+  });
+
+  test('still refuses a protected or overlapping anchor', () => {
+    const code = `${FM}\nUse \`Mars 5 Ultra\` here.\n`;
+    const out = applyLinkSuggestions(code, [aff('Use `', '` here.')]);
+    expect(out.applied).toEqual([]);
+  });
+});
+
+describe('mergeDecisions for affiliates (PIPE-41)', () => {
+  const mention = (over = {}) => ({
+    id: 'm1',
+    kind: 'affiliate' as const,
+    anchorText: 'Mars',
+    productName: 'Mars',
+    quote: 'Mars.',
+    before: '',
+    after: '',
+    occurrence: { paragraph: 0, offset: 0 },
+    reason: '',
+    decision: 'pending' as const,
+    ...over,
+  });
+
+  test('carries decision, url and warnings across a regeneration, and the tracking id', () => {
+    const previous = suggestions({
+      affiliates: [mention({ decision: 'linked', url: 'https://u', warnings: ['w'] })],
+      trackingId: 'nakomis-x-21',
+    });
+    const next = suggestions({ affiliates: [mention(), mention({ id: 'm2' })] });
+    const merged = mergeDecisions(previous, next);
+    expect(merged.affiliates?.[0]).toMatchObject({ decision: 'linked', url: 'https://u', warnings: ['w'] });
+    expect(merged.affiliates?.[1].decision).toBe('pending');
+    expect(merged.trackingId).toBe('nakomis-x-21');
+  });
+
+  test('undecidedAffiliates counts pending mentions, and copes with none', () => {
+    expect(undecidedAffiliates(suggestions())).toBe(0);
+    expect(
+      undecidedAffiliates(
+        suggestions({ affiliates: [mention(), mention({ id: 'b', decision: 'skipped' })] }),
+      ),
+    ).toBe(1);
+  });
 });
