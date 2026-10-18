@@ -218,3 +218,43 @@ test('reports missing frontmatter rather than failing', async () => {
   expect(body.frontmatter.present).toBe(false);
   expect(body.frontmatter.warnings[0].code).toBe('frontmatter-missing');
 });
+
+describe('suggestions (PIPE-38)', () => {
+  const summary = { iteration: 2, status: 'ok', links: 0, repos: 0, undecided: 0, generatedAt: 'x' };
+  const stored = { version: 1, slug: 'p', iteration: 2, status: 'ok', links: [], repos: [], dropped: [] };
+
+  test('includes the suggestions the row points at', async () => {
+    ddbMock.on(GetCommand).resolves({
+      Item: { slug: 'p', status: 'staged', reviewIteration: 2, suggestionsSummary: summary },
+    });
+    s3Mock.on(HeadObjectCommand).resolves({});
+    s3Mock.on(GetObjectCommand).resolves(draftBody(JSON.stringify(stored)));
+    const body = JSON.parse((await postDetail(event('p'))).body);
+    expect(body.suggestions).toMatchObject({ status: 'ok', iteration: 2 });
+  });
+
+  test('is null for a post without suggestions', async () => {
+    ddbMock.on(GetCommand).resolves({ Item: { slug: 'p', status: 'staged' } });
+    s3Mock.on(HeadObjectCommand).rejects(Object.assign(new Error('nf'), { name: 'NotFound' }));
+    s3Mock.on(GetObjectCommand).resolves(draftBody('# only'));
+    const body = JSON.parse((await postDetail(event('p'))).body);
+    expect(body.suggestions).toBeNull();
+  });
+
+  test('an unreadable suggestions file never fails the page', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    ddbMock.on(GetCommand).resolves({
+      Item: { slug: 'p', status: 'staged', suggestionsSummary: summary },
+    });
+    s3Mock.on(HeadObjectCommand).resolves({});
+    s3Mock
+      .on(GetObjectCommand)
+      .resolves(draftBody(JSON.stringify({ reviews: [], gate: null })))
+      .on(GetObjectCommand, { Key: 'p/iteration-2/suggestions.json' })
+      .resolves(draftBody('not json{'));
+    const res = await postDetail(event('p'));
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).suggestions).toBeNull();
+    jest.restoreAllMocks();
+  });
+});

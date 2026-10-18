@@ -6,6 +6,7 @@ import {
   saveFailedMarkdown,
   reReviewFailed,
   fetchRepoChecks,
+  setSuggestionDecisions,
 } from './post-detail';
 
 vi.mock('../config/config', () => ({
@@ -162,5 +163,31 @@ describe('fetchRepoChecks', () => {
   test('throws on a non-ok response', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }));
     await expect(fetchRepoChecks('a', 'tok')).rejects.toThrow('HTTP 500');
+  });
+});
+
+describe('setSuggestionDecisions (PIPE-38)', () => {
+  test('posts the decisions and returns the updated suggestions', async () => {
+    const suggestions = { status: 'ok', links: [], repos: [] };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => ({ suggestions }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await setSuggestionDecisions('a/b', { l1: 'accepted' }, 'tok');
+
+    expect(result).toEqual(suggestions);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.example.test/posts/a%2Fb/suggestions',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ decisions: { l1: 'accepted' } }),
+      }),
+    );
+  });
+
+  test('throws on a non-ok response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 409 }));
+    await expect(setSuggestionDecisions('a', {}, 'tok')).rejects.toThrow('HTTP 409');
   });
 });

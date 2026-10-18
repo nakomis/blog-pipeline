@@ -22,7 +22,8 @@
     "seed-draft-sandbox": "NPM_ENVIRONMENT=sandbox ts-node scripts/seed-draft.ts",
     "seed-draft-prod": "NPM_ENVIRONMENT=prod ts-node scripts/seed-draft.ts",
     "identity-check-sandbox": "NPM_ENVIRONMENT=sandbox ts-node scripts/reviewer-identity-check.ts",
-    "identity-check-prod": "NPM_ENVIRONMENT=prod ts-node scripts/reviewer-identity-check.ts"
+    "identity-check-prod": "NPM_ENVIRONMENT=prod ts-node scripts/reviewer-identity-check.ts",
+    "eval-links-prod": "NPM_ENVIRONMENT=prod AWS_REGION=eu-west-2 ts-node scripts/link-suggestions-eval.ts"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.145",
@@ -42,6 +43,7 @@
     "@ai-sdk/azure": "^3.0.66",
     "@ai-sdk/google": "^3.0.79",
     "@ai-sdk/openai-compatible": "^2.0.48",
+    "@aws-sdk/client-bedrock-runtime": "^3.1152.0",
     "@aws-sdk/client-dynamodb": "^3.731.0",
     "@aws-sdk/client-lambda": "^3.1055.0",
     "@aws-sdk/client-s3": "^3.1053.0",

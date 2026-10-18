@@ -8,6 +8,8 @@ import type {
 } from 'aws-lambda';
 import { imageKey } from '../images/placeholders';
 import { draftExists, draftKey, getDraft, reviewsKey } from '../review/drafts';
+import type { Suggestions, SuggestionsSummary } from '../suggest/schema';
+import { getCurrentSuggestions } from '../suggest/store';
 import { requireEnv } from '../review/runtime';
 import { buildFrontmatterInfo } from './frontmatter';
 import { corsHeaders, jsonResponse } from './http';
@@ -21,6 +23,7 @@ import { corsHeaders, jsonResponse } from './http';
  *    for the diff;
  *  - each iteration's reviewer critiques + gate decision (from `reviews.json`);
  *  - the author's frontmatter, parsed, with warnings (PIPE-37);
+ *  - the link and repo suggestions made for it, if any (PIPE-38);
  *  - the generated images, with a presigned GET URL for the ready ones (the
  *    drafts bucket is private, so the SPA can't read it directly).
  *
@@ -131,6 +134,18 @@ export async function postDetail(
     })),
   );
 
+  // PIPE-38: the suggestions made when the post was staged. Never fail the
+  // page over them — an unreadable file simply means none are shown.
+  let suggestions: Suggestions | null = null;
+  try {
+    suggestions = await getCurrentSuggestions(
+      slug,
+      Item.suggestionsSummary as SuggestionsSummary | undefined,
+    );
+  } catch (err) {
+    console.error(`Could not read suggestions for '${slug}'`, err);
+  }
+
   return jsonResponse(
     200,
     {
@@ -139,6 +154,7 @@ export async function postDetail(
       originalMarkdown,
       iterations,
       images,
+      suggestions,
       frontmatter: buildFrontmatterInfo({
         originalMarkdown,
         finalMarkdown,

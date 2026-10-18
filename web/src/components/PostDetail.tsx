@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from 'react-oidc-context';
 import { Link, useParams } from 'react-router';
 import { diffLines } from 'diff';
@@ -11,11 +11,20 @@ import {
   fetchPostDetail,
   reReviewFailed,
   saveFailedMarkdown,
+  setSuggestionDecisions,
   type AnnounceMode,
+  type SuggestionDecision,
   type PostDetail as PostDetailData,
 } from '../api/post-detail';
 import { displayStage, type FailureHistoryEntry, type Post } from '../api/posts';
 import FrontmatterPanel from './FrontmatterPanel';
+import {
+  SuggestionMark,
+  SuggestionProvider,
+  staleLinks,
+  suggestionPlugin,
+} from './InlineSuggestions';
+import { SuggestionSummary } from './SuggestionSummary';
 import './PostDetail.css';
 
 type Tab = 'article' | 'diff' | 'reviews' | 'images';
@@ -247,6 +256,88 @@ function PostDetailInner({ idToken }: { idToken: string }) {
     return map;
   }, [data]);
 
+  // ── Link and repo suggestions (PIPE-38) ──────────────────────────────────
+  const suggestions = data?.suggestions ?? null;
+  const links = suggestions?.status === 'ok' ? suggestions.links : [];
+  const articleMarkdown = data ? stripFrontmatter(data.finalMarkdown) : '';
+  const stale = useMemo(() => staleLinks(links, articleMarkdown), [links, articleMarkdown]);
+  const staleIds = useMemo(() => new Set(stale.map((l) => l.id)), [stale]);
+  const inlineLinks = useMemo(
+    () => links.filter((l) => !staleIds.has(l.id)),
+    [links, staleIds],
+  );
+  const remarkPlugins = useMemo(
+    () => [remarkGfm, suggestionPlugin(inlineLinks)],
+    [inlineLinks],
+  );
+  const undecided = suggestions
+    ? [...suggestions.links, ...suggestions.repos].filter((s) => s.decision === 'pending').length
+    : 0;
+
+  // Choices are saved one at a time, in order, so quick clicks cannot overwrite
+  // each other on the server.
+  const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
+  // Set when a queued save failed (and was rolled back), so approval can refuse
+  // to go ahead on choices the server never recorded.
+  const suggestionSaveFailed = useRef(false);
+
+  const setLocalDecisions = (changes: Record<string, SuggestionDecision>) => {
+    setData((prev) => {
+      if (!prev?.suggestions) {
+        return prev;
+      }
+      const apply = <T extends { id: string; decision: SuggestionDecision }>(items: T[]): T[] =>
+        items.map((i) => (changes[i.id] ? { ...i, decision: changes[i.id] } : i));
+      return {
+        ...prev,
+        suggestions: {
+          ...prev.suggestions,
+          links: apply(prev.suggestions.links),
+          repos: apply(prev.suggestions.repos),
+        },
+      };
+    });
+  };
+
+  const decideSuggestions = (changes: Record<string, SuggestionDecision>) => {
+    if (!slug || !data?.suggestions) {
+      return;
+    }
+    const before: Record<string, SuggestionDecision> = {};
+    for (const s of [...data.suggestions.links, ...data.suggestions.repos]) {
+      if (changes[s.id]) {
+        before[s.id] = s.decision;
+      }
+    }
+    setError(null);
+    setLocalDecisions(changes);
+    saveQueue.current = saveQueue.current.then(async () => {
+      try {
+        await setSuggestionDecisions(slug, changes, idToken);
+      } catch (err) {
+        suggestionSaveFailed.current = true;
+        setLocalDecisions(before);
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    });
+  };
+
+  const decideSuggestion = (id: string, decision: SuggestionDecision) =>
+    decideSuggestions({ [id]: decision });
+
+  const rejectAllUndecided = () => {
+    if (!suggestions) {
+      return;
+    }
+    const changes: Record<string, SuggestionDecision> = {};
+    for (const s of [...suggestions.links, ...suggestions.repos]) {
+      if (s.decision === 'pending') {
+        changes[s.id] = 'rejected';
+      }
+    }
+    decideSuggestions(changes);
+  };
+
   const save = async (reReview: boolean) => {
     if (!slug) {
       return;
@@ -344,8 +435,33 @@ function PostDetailInner({ idToken }: { idToken: string }) {
     setNotice(null);
     setError(null);
     try {
+      if (decision === 'approve') {
+        // Approval applies what the server has recorded, so let every pending
+        // accept / reject reach it first; and do not approve if one was lost.
+        await saveQueue.current;
+        if (suggestionSaveFailed.current) {
+          suggestionSaveFailed.current = false;
+          setError(
+            'A suggestion choice could not be saved, so the post was not approved. Check the suggestions and approve again.',
+          );
+          return;
+        }
+      }
       const result = await decidePost(slug, decision, idToken, announceBluesky);
-      setNotice(`Post ${decision === 'approve' ? 'approved' : 'rejected'}.`);
+      const applied = result.applied;
+      const appliedText =
+        decision === 'approve' && applied && (applied.links > 0 || applied.repos > 0)
+          ? ` Applied ${applied.links} link${applied.links === 1 ? '' : 's'} and ${applied.repos} repo${applied.repos === 1 ? '' : 's'}.`
+          : '';
+      const skippedText =
+        result.skipped && result.skipped.length > 0
+          ? ` ${result.skipped.length} accepted link${result.skipped.length === 1 ? ' was' : 's were'} skipped: ${result.skipped
+              .map((k) => k.reason)
+              .join('; ')}.`
+          : '';
+      setNotice(
+        `Post ${decision === 'approve' ? 'approved' : 'rejected'}.${appliedText}${skippedText}`,
+      );
       setData((prev) =>
         prev ? { ...prev, post: { ...prev.post, status: result.status as never } } : prev,
       );
@@ -432,6 +548,12 @@ function PostDetailInner({ idToken }: { idToken: string }) {
       </header>
 
       {notice && <p className="detail__notice">{notice}</p>}
+      {staged && undecided > 0 && (
+        <p className="detail__notice detail__notice--warn" role="status">
+          {undecided} suggestion{undecided === 1 ? ' is' : 's are'} undecided and will not be
+          applied if you approve now.
+        </p>
+      )}
       {failed && <FailureReason post={data.post} />}
       {failureHistory.length > 0 && <FailureHistory entries={failureHistory} />}
       {error && (
@@ -444,6 +566,9 @@ function PostDetailInner({ idToken }: { idToken: string }) {
         frontmatter={data.frontmatter}
         slug={data.post.slug}
         idToken={idToken}
+        repoSuggestions={suggestions?.status === 'ok' ? suggestions.repos : undefined}
+        onDecideSuggestion={decideSuggestion}
+        suggestionsEditable={staged}
       />
 
       <nav className="detail__tabs" aria-label="Post views">
@@ -527,10 +652,21 @@ function PostDetailInner({ idToken }: { idToken: string }) {
                 Edit
               </button>
             </div>
+            {suggestions && (
+              <SuggestionSummary
+                suggestions={suggestions}
+                stale={stale}
+                editable={staged}
+                onDecide={decideSuggestion}
+                onRejectAll={rejectAllUndecided}
+              />
+            )}
+            <SuggestionProvider links={inlineLinks} onDecide={decideSuggestion} editable={staged}>
             <div className="markdown">
               <Markdown
-                remarkPlugins={[remarkGfm]}
+                remarkPlugins={remarkPlugins}
                 components={{
+                  mark: (props) => <SuggestionMark {...props} />,
                   img: ({ src, alt, ...props }) => {
                     const normalised = src?.replace(/^\.\//, '') ?? '';
                     const resolved =
@@ -542,9 +678,10 @@ function PostDetailInner({ idToken }: { idToken: string }) {
                   },
                 }}
               >
-                {stripFrontmatter(data.finalMarkdown)}
+                {articleMarkdown}
               </Markdown>
             </div>
+            </SuggestionProvider>
           </div>
         ))}
 

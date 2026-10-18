@@ -4,7 +4,7 @@ import {
   GetCommand,
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { SFNClient, StartExecutionCommand } from '@aws-sdk/client-sfn';
 import type { APIGatewayProxyEvent } from 'aws-lambda';
 import { postEdit, postDecision } from '../../../lambda/api/post-actions';
@@ -188,5 +188,75 @@ describe('postDecision', () => {
     expect(JSON.parse(res.body)).toMatchObject({ status: 'failed' });
     const upd = ddbMock.commandCalls(UpdateCommand)[0].args[0].input;
     expect(upd.UpdateExpression).toContain('rejectedAt = :now');
+  });
+
+  describe('link and repo suggestions (PIPE-38)', () => {
+    const summary = { iteration: 2, status: 'ok', links: 1, repos: 1, undecided: 0, generatedAt: 'x' };
+    const file = (decision: string) =>
+      JSON.stringify({
+        version: 1, slug: 'p', iteration: 2, generatedAt: 'x', status: 'ok',
+        models: { chat: 'c', embed: 'e' }, dropped: [],
+        links: [{
+          id: 'l1', kind: 'link', anchorText: 'the Cabal', context: '', targetSlug: 's', targetTitle: 't',
+          targetUrl: 'https://blog.nakomis.com/2026-07-29-cabal', targetDate: 'd',
+          occurrence: { paragraph: 0, offset: 0 }, reason: 'r', decision,
+        }],
+        repos: [{
+          id: 'r1', kind: 'repo', fullName: 'nakomis/mcps', name: 'mcps', url: 'https://github.com/nakomis/mcps',
+          description: null, evidence: 'e', reason: 'r', source: 'llm', decision,
+        }],
+      });
+
+    function serve(decision: string): void {
+      s3Mock.on(HeadObjectCommand).resolves({});
+      s3Mock.on(GetObjectCommand, { Key: 'p/iteration-2/suggestions.json' }).resolves({
+        Body: { transformToString: async () => file(decision) } as never,
+      });
+      s3Mock.on(GetObjectCommand, { Key: 'p/iteration-2/draft.md' }).resolves({
+        Body: { transformToString: async () => 'I asked the Cabal.' } as never,
+        ETag: '"e"',
+      });
+      ddbMock.on(GetCommand).resolves({
+        Item: { slug: 'p', status: 'staged', reviewIteration: 2, suggestionsSummary: summary },
+      });
+      ddbMock.on(UpdateCommand).resolves({});
+    }
+
+    test('approve writes accepted links into the draft and accepted repos onto the row', async () => {
+      serve('accepted');
+      const res = await postDecision(event('p', { decision: 'approve' }));
+      const body = JSON.parse(res.body);
+      expect(body).toMatchObject({ status: 'approved', applied: { links: 1, repos: 1 }, skipped: [] });
+      const put = s3Mock.commandCalls(PutObjectCommand)[0].args[0].input;
+      expect(put.Body).toBe('I asked [the Cabal](https://blog.nakomis.com/2026-07-29-cabal).');
+      const upd = ddbMock.commandCalls(UpdateCommand)[0].args[0].input;
+      expect(upd.UpdateExpression).toContain('approvedRepos = :repos');
+      expect(upd.ExpressionAttributeValues).toMatchObject({
+        ':repos': [{ name: 'mcps', url: 'https://github.com/nakomis/mcps' }],
+      });
+    });
+
+    test('approve applies nothing that is still pending and is not blocked by it', async () => {
+      serve('pending');
+      const res = await postDecision(event('p', { decision: 'approve' }));
+      expect(res.statusCode).toBe(200);
+      expect(s3Mock.commandCalls(PutObjectCommand)).toHaveLength(0);
+      const upd = ddbMock.commandCalls(UpdateCommand)[0].args[0].input;
+      expect(upd.UpdateExpression).not.toContain('approvedRepos');
+    });
+
+    test('reject never touches suggestions', async () => {
+      serve('accepted');
+      const res = await postDecision(event('p', { decision: 'reject' }));
+      expect(JSON.parse(res.body)).not.toHaveProperty('applied');
+      expect(s3Mock.commandCalls(PutObjectCommand)).toHaveLength(0);
+    });
+
+    test('a failure applying links leaves the post staged', async () => {
+      serve('accepted');
+      s3Mock.on(PutObjectCommand).rejects(new Error('S3 down'));
+      await expect(postDecision(event('p', { decision: 'approve' }))).rejects.toThrow('S3 down');
+      expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
+    });
   });
 });

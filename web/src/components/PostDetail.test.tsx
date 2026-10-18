@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import type { AuthContextProps } from 'react-oidc-context';
 import { useAuth } from 'react-oidc-context';
@@ -10,6 +10,7 @@ import {
   fetchFailedMarkdown,
   saveFailedMarkdown,
   reReviewFailed,
+  setSuggestionDecisions,
   type PostDetail as PostDetailData,
 } from '../api/post-detail';
 
@@ -23,6 +24,7 @@ const mockedDecide = vi.mocked(decidePost);
 const mockedFetchFailed = vi.mocked(fetchFailedMarkdown);
 const mockedSaveFailed = vi.mocked(saveFailedMarkdown);
 const mockedReReview = vi.mocked(reReviewFailed);
+const mockedSetDecisions = vi.mocked(setSuggestionDecisions);
 
 function authState(overrides: Partial<AuthContextProps>): AuthContextProps {
   return {
@@ -563,5 +565,220 @@ describe('PostDetail — failed posts (PIPE-36)', () => {
     expect(screen.getByText(/re-reviewed from iteration\s+9/)).toBeInTheDocument();
     // Not failed any more, so not editable here.
     expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled();
+  });
+});
+
+describe('PostDetail — link and repo suggestions (PIPE-38)', () => {
+  const withSuggestions = (over: Partial<NonNullable<PostDetailData['suggestions']>> = {}): PostDetailData => ({
+    ...sampleDetail,
+    finalMarkdown: 'I asked the Cabal what it thought.',
+    suggestions: {
+      version: 1,
+      slug: 'my-post',
+      iteration: 2,
+      generatedAt: 'x',
+      status: 'ok',
+      models: { chat: 'c', embed: 'e' },
+      links: [
+        {
+          id: 'l1', kind: 'link', anchorText: 'the Cabal', context: '', targetSlug: 's',
+          targetTitle: 'Three of Seven AIs', targetUrl: 'https://blog.nakomis.com/s', targetDate: '2026-07-29',
+          occurrence: { paragraph: 0, offset: 0 }, reason: 'It refers to the panel review.', decision: 'pending',
+        },
+      ],
+      repos: [
+        {
+          id: 'r1', kind: 'repo', fullName: 'nakomis/mcps', name: 'mcps', url: 'https://github.com/nakomis/mcps',
+          description: null, evidence: 'e', reason: 'r', source: 'llm', decision: 'pending',
+        },
+      ],
+      dropped: [],
+      ...over,
+    },
+  });
+
+  test('highlights the suggested link inline and warns that undecided ones will not be applied', async () => {
+    mockedFetch.mockResolvedValue(withSuggestions());
+    mockedUseAuth.mockReturnValue(signedIn());
+    renderDetail();
+    await screen.findByText('My Post');
+
+    expect(screen.getByText('the Cabal').tagName).toBe('MARK');
+    expect(screen.getByRole('group', { name: /link suggestion/i })).toHaveTextContent('It refers to the panel review.');
+    expect(screen.getByText(/2 suggestions are undecided and will not be applied/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled();
+  });
+
+  test('accepting saves the choice and the link now reads as applied on approval', async () => {
+    mockedFetch.mockResolvedValue(withSuggestions());
+    mockedSetDecisions.mockResolvedValue({} as never);
+    mockedUseAuth.mockReturnValue(signedIn());
+    renderDetail();
+    await screen.findByText('My Post');
+
+    fireEvent.click(within(screen.getByRole('group', { name: /link suggestion/i })).getByRole('button', { name: 'Accept' }));
+
+    await waitFor(() =>
+      expect(mockedSetDecisions).toHaveBeenCalledWith('my-post', { l1: 'accepted' }, 'tok'),
+    );
+    expect(screen.getByRole('link', { name: 'the Cabal' })).toBeInTheDocument();
+    expect(screen.getByText(/1 suggestion is undecided/)).toBeInTheDocument();
+  });
+
+  test('rolls the choice back and shows the error when saving fails', async () => {
+    mockedFetch.mockResolvedValue(withSuggestions());
+    mockedSetDecisions.mockRejectedValue(new Error('Failed to save suggestion choice (HTTP 500)'));
+    mockedUseAuth.mockReturnValue(signedIn());
+    renderDetail();
+    await screen.findByText('My Post');
+
+    fireEvent.click(within(screen.getByRole('group', { name: /link suggestion/i })).getByRole('button', { name: 'Reject' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('HTTP 500');
+    await waitFor(() => expect(screen.getByText('the Cabal').tagName).toBe('MARK'));
+  });
+
+  test('"Reject all undecided" rejects every pending suggestion in one request', async () => {
+    mockedFetch.mockResolvedValue(withSuggestions());
+    mockedSetDecisions.mockResolvedValue({} as never);
+    mockedUseAuth.mockReturnValue(signedIn());
+    renderDetail();
+    await screen.findByText('My Post');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reject all undecided' }));
+
+    await waitFor(() =>
+      expect(mockedSetDecisions).toHaveBeenCalledWith(
+        'my-post',
+        { l1: 'rejected', r1: 'rejected' },
+        'tok',
+      ),
+    );
+  });
+
+  test('approval reports what was applied and what was skipped', async () => {
+    mockedFetch.mockResolvedValue(withSuggestions());
+    mockedDecide.mockResolvedValue({
+      slug: 'my-post',
+      decision: 'approve',
+      status: 'approved',
+      applied: { links: 1, repos: 1 },
+      skipped: [{ id: 'x', reason: 'the anchor text is no longer in the post' }],
+    });
+    mockedUseAuth.mockReturnValue(signedIn());
+    renderDetail();
+    await screen.findByText('My Post');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+
+    expect(
+      await screen.findByText(/Applied 1 link and 1 repo\. 1 accepted link was skipped: the anchor text is no longer/),
+    ).toBeInTheDocument();
+  });
+
+  test('a failed step is explained and the post is still approvable', async () => {
+    mockedFetch.mockResolvedValue({
+      ...sampleDetail,
+      suggestions: {
+        version: 1, slug: 'my-post', iteration: 2, generatedAt: 'x', status: 'error',
+        skippedReason: 'error: Bedrock throttled', models: { chat: 'c', embed: 'e' },
+        links: [], repos: [], dropped: [],
+      },
+    });
+    mockedUseAuth.mockReturnValue(signedIn());
+    renderDetail();
+    await screen.findByText('My Post');
+
+    expect(screen.getByText(/the step failed \(error: Bedrock throttled\)/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled();
+  });
+
+  test('stale suggestions are listed rather than highlighted', async () => {
+    mockedFetch.mockResolvedValue({ ...withSuggestions(), finalMarkdown: 'The text was rewritten.' });
+    mockedUseAuth.mockReturnValue(signedIn());
+    renderDetail();
+    await screen.findByText('My Post');
+
+    expect(screen.getByText(/will be skipped on approval/)).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: /link suggestion/i })).toBeNull();
+  });
+
+  test('posts without suggestions render exactly as before', async () => {
+    mockedFetch.mockResolvedValue({ ...sampleDetail, suggestions: null });
+    mockedUseAuth.mockReturnValue(signedIn());
+    renderDetail();
+    await screen.findByText('My Post');
+    expect(screen.queryByText(/suggested/i)).toBeNull();
+  });
+
+  test('suggested repos appear in the frontmatter panel and can be accepted there', async () => {
+    mockedFetch.mockResolvedValue({
+      ...withSuggestions(),
+      frontmatter: {
+        present: true, raw: 'title: x', filenameKnown: true, warnings: [],
+        fields: { title: 'Another title' },
+      },
+    });
+    mockedSetDecisions.mockResolvedValue({} as never);
+    mockedUseAuth.mockReturnValue(signedIn());
+    renderDetail();
+    await screen.findByRole('heading', { name: 'My Post' });
+
+    const panel = screen.getByText('Frontmatter').closest('details') as HTMLElement;
+    expect(within(panel).getByRole('link', { name: 'mcps' })).toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Accept' }));
+    await waitFor(() =>
+      expect(mockedSetDecisions).toHaveBeenCalledWith('my-post', { r1: 'accepted' }, 'tok'),
+    );
+  });
+
+  test('Approve waits for pending suggestion saves, so an accept is never missed', async () => {
+    mockedFetch.mockResolvedValue(withSuggestions());
+    let finishSave: () => void = () => undefined;
+    const order: string[] = [];
+    mockedSetDecisions.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishSave = () => {
+            order.push('saved');
+            resolve({} as never);
+          };
+        }),
+    );
+    mockedDecide.mockImplementation(async () => {
+      order.push('decided');
+      return { slug: 'my-post', decision: 'approve', status: 'approved' };
+    });
+    mockedUseAuth.mockReturnValue(signedIn());
+    renderDetail();
+    await screen.findByText('My Post');
+
+    fireEvent.click(within(screen.getByRole('group', { name: /link suggestion/i })).getByRole('button', { name: 'Accept' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    await Promise.resolve();
+    expect(mockedDecide).not.toHaveBeenCalled();
+
+    finishSave();
+    await waitFor(() => expect(mockedDecide).toHaveBeenCalled());
+    expect(order).toEqual(['saved', 'decided']);
+  });
+
+  test('Approve is abandoned, with a message, if a choice could not be saved', async () => {
+    mockedFetch.mockResolvedValue(withSuggestions());
+    mockedSetDecisions.mockRejectedValue(new Error('Failed to save suggestion choice (HTTP 500)'));
+    mockedUseAuth.mockReturnValue(signedIn());
+    renderDetail();
+    await screen.findByText('My Post');
+
+    fireEvent.click(within(screen.getByRole('group', { name: /link suggestion/i })).getByRole('button', { name: 'Accept' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+
+    expect(await screen.findByText(/post was not approved/)).toBeInTheDocument();
+    expect(mockedDecide).not.toHaveBeenCalled();
+    // The choice was rolled back, and a second attempt is allowed.
+    mockedSetDecisions.mockReset();
+    mockedDecide.mockResolvedValue({ slug: 'my-post', decision: 'approve', status: 'approved' });
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(mockedDecide).toHaveBeenCalledTimes(1));
   });
 });

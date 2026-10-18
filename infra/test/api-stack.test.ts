@@ -101,6 +101,18 @@ describe('ApiStack', () => {
     expect(Object.keys(secured).length).toBeGreaterThanOrEqual(4);
   });
 
+  test('the suggestions route exists and is secured (PIPE-38)', () => {
+    template.hasResourceProperties('AWS::ApiGateway::Resource', {
+      PathPart: 'suggestions',
+    });
+    template.hasResourceProperties('AWS::ApiGateway::Method', {
+      HttpMethod: 'POST',
+      ApiKeyRequired: true,
+      AuthorizationType: 'COGNITO_USER_POOLS',
+      ResourceId: Match.anyValue(),
+    });
+  });
+
   test('the failed-post edit routes exist and are secured (PIPE-36)', () => {
     for (const part of ['markdown', 'rereview']) {
       template.hasResourceProperties('AWS::ApiGateway::Resource', {

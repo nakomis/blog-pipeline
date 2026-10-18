@@ -9,7 +9,15 @@ import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import { Construct } from 'constructs';
-import { alertsTopicName, EnvConfig, IMAGE, REVIEW } from './config';
+import {
+  alertsTopicName,
+  EnvConfig,
+  githubOwners,
+  IMAGE,
+  LINKS,
+  privateBucketName,
+  REVIEW,
+} from './config';
 
 export interface BlogPipelineReviewStackProps extends cdk.StackProps {
   config: EnvConfig;
@@ -148,20 +156,24 @@ export class BlogPipelineReviewStack extends cdk.Stack {
       id: string,
       file: string,
       opts: {
+        /** Directory under `lambda/` — the review-loop Lambdas live in `review`. */
+        dir?: string;
         timeout?: cdk.Duration;
         memorySize?: number;
         environment?: Record<string, string>;
       },
-    ): nodejs.NodejsFunction =>
-      new nodejs.NodejsFunction(this, id, {
+    ): nodejs.NodejsFunction => {
+      const dir = opts.dir ?? 'review';
+      return new nodejs.NodejsFunction(this, id, {
         functionName: `blog-pipeline-review-${file}-${deployEnv}`,
-        entry: path.join(__dirname, `../lambda/review/${file}.ts`),
+        entry: path.join(__dirname, `../lambda/${dir}/${file}.ts`),
         handler: 'handler',
         runtime: lambda.Runtime.NODEJS_22_X,
         timeout: opts.timeout ?? cdk.Duration.seconds(30),
         memorySize: opts.memorySize ?? 256,
         environment: opts.environment,
       });
+    };
 
     // Permission to invoke the Bedrock foundation models and the EU
     // cross-region inference profiles the review loop uses.
@@ -283,6 +295,50 @@ export class BlogPipelineReviewStack extends cdk.Stack {
     );
     imageSubmitFn.grantInvoke(loadDraftFn);
 
+    // ── Link and repo suggestions (PIPE-38) ──────────────────────────────
+    // Runs after the review loop passes and before the post is staged. It
+    // reads the blog's embeddings index from the nakom.is private bucket
+    // (bucket name derived from the deploy environment), embeds the draft with
+    // Titan and asks Haiku to choose from closed lists. Best-effort: every
+    // failure leaves the post staged, with the reason recorded.
+    const privateBucket = privateBucketName(deployEnv);
+    const suggestLinksFn = makeFn('SuggestLinksFn', 'suggest-links', {
+      dir: 'suggest',
+      timeout: cdk.Duration.seconds(120),
+      memorySize: 1024,
+      environment: {
+        POSTS_TABLE_NAME: postsTable.tableName,
+        DRAFTS_BUCKET: draftsBucket.bucketName,
+        PRIVATE_BUCKET: privateBucket,
+        EMBED_REGION: LINKS.embedRegion,
+        // Haiku is called through the direct Anthropic API with the reviewer's key.
+        ANTHROPIC_PARAM_NAME: anthropicParam.parameterName,
+        GITHUB_OWNERS: JSON.stringify(githubOwners()),
+      },
+    });
+    draftsBucket.grantReadWrite(suggestLinksFn);
+    postsTable.grantReadWriteData(suggestLinksFn);
+    suggestLinksFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: 'ReadEmbeddingsIndex',
+        actions: ['s3:GetObject'],
+        resources: [`arn:aws:s3:::${privateBucket}/${LINKS.embeddingsKey}`],
+      }),
+    );
+    suggestLinksFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: 'EmbedWithTitan',
+        actions: ['bedrock:InvokeModel'],
+        resources: [
+          `arn:aws:bedrock:${LINKS.embedRegion}::foundation-model/${LINKS.embedModel}`,
+        ],
+      }),
+    );
+    // Haiku goes through the direct Anthropic API (AWS refuses it for these
+    // accounts), so the role needs the key, not a Bedrock model permission.
+    // Plain String parameter, as for the reviewer: no KMS grant is needed.
+    anthropicParam.grantRead(suggestLinksFn);
+
     // ── State machine ────────────────────────────────────────────────────
     const reviewComplete = new sfn.Succeed(this, 'ReviewComplete');
     const reviewFailed = new sfn.Fail(this, 'ReviewFailed', {
@@ -380,13 +436,62 @@ export class BlogPipelineReviewStack extends cdk.Stack {
     });
 
     const setOutcomePass = setOutcome('SetOutcomePass', 'staged', 'passed');
+
+    // Link and repo suggestions sit between the gate's pass and staging. The
+    // Lambda catches its own errors; the catch and timeout below cover a crash
+    // or hang, and either way the post is staged. Not wired to HandleException.
+    const suggestLinks = new tasks.LambdaInvoke(this, 'SuggestLinks', {
+      lambdaFunction: suggestLinksFn,
+      payload: sfn.TaskInput.fromObject({
+        slug: sfn.JsonPath.stringAt('$.slug'),
+        iteration: sfn.JsonPath.numberAt('$.iteration'),
+        draftKey: sfn.JsonPath.stringAt('$.draftKey'),
+      }),
+      payloadResponseOnly: true,
+      resultPath: sfn.JsonPath.DISCARD,
+      taskTimeout: sfn.Timeout.duration(
+        cdk.Duration.seconds(LINKS.taskTimeoutSeconds),
+      ),
+    });
+    // When the Lambda itself crashes or times out nothing records the failure,
+    // so a re-review would show the previous iteration's suggestions as current.
+    // Mark this iteration as failed on the post row, then stage regardless.
+    const markSuggestFailed = new tasks.DynamoUpdateItem(this, 'MarkSuggestFailed', {
+      table: postsTable,
+      key: { slug: tasks.DynamoAttributeValue.fromString(sfn.JsonPath.stringAt('$.slug')) },
+      updateExpression: 'SET suggestionsSummary = :s',
+      expressionAttributeValues: {
+        ':s': tasks.DynamoAttributeValue.fromMap({
+          iteration: tasks.DynamoAttributeValue.numberFromString(
+            sfn.JsonPath.format('{}', sfn.JsonPath.stringAt('$.iteration')),
+          ),
+          status: tasks.DynamoAttributeValue.fromString('error'),
+          skippedReason: tasks.DynamoAttributeValue.fromString(
+            sfn.JsonPath.format(
+              'step failed: {}',
+              sfn.JsonPath.stringAt('$.suggestError.Error'),
+            ),
+          ),
+          links: tasks.DynamoAttributeValue.fromNumber(0),
+          repos: tasks.DynamoAttributeValue.fromNumber(0),
+          undecided: tasks.DynamoAttributeValue.fromNumber(0),
+          generatedAt: tasks.DynamoAttributeValue.fromString(
+            sfn.JsonPath.stringAt('$$.State.EnteredTime'),
+          ),
+        }),
+      },
+      resultPath: sfn.JsonPath.DISCARD,
+    });
+    markSuggestFailed.addCatch(setOutcomePass, { resultPath: sfn.JsonPath.DISCARD });
+    markSuggestFailed.next(setOutcomePass);
+    suggestLinks.addCatch(markSuggestFailed, { resultPath: '$.suggestError' });
     const setOutcomeCapped = setOutcome('SetOutcomeCapped', 'failed', 'capped');
     const setOutcomeQuorum = setOutcome('SetOutcomeQuorum', 'failed', 'quorum');
 
     const decideLoop = new sfn.Choice(this, 'DecideLoop')
       .when(
         sfn.Condition.stringEquals('$.gate.decision', 'pass'),
-        setOutcomePass.next(reviewComplete),
+        suggestLinks,
       )
       .when(
         sfn.Condition.stringEquals('$.gate.decision', 'loop'),
@@ -406,6 +511,8 @@ export class BlogPipelineReviewStack extends cdk.Stack {
           cause: 'The gate returned an unrecognised decision.',
         }),
       );
+
+    suggestLinks.next(setOutcomePass.next(reviewComplete));
 
     // Wire the loop: load → fan out → gate → persist → decide → (redraft → …).
     loadDraft.next(reviewFanOut);

@@ -13,6 +13,7 @@ import { listPosts } from './list-posts';
 import { postDetail } from './post-detail';
 import { postEdit, postDecision } from './post-actions';
 import { publishNow } from './publish-now';
+import { postSuggestions } from './suggestions';
 import { repoChecks } from './repo-checks';
 import { corsHeaders, jsonResponse } from './http';
 
@@ -23,6 +24,7 @@ import { corsHeaders, jsonResponse } from './http';
  *  - `GET  /posts/{slug}/repo-checks` — are the post's `repos:` URLs reachable on GitHub? (PIPE-37);
  *  - `POST /posts/{slug}/edit`      — edit a staged draft, optionally re-review;
  *  - `POST /posts/{slug}/decision`  — approve or reject a staged post;
+ *  - `POST /posts/{slug}/suggestions` — accept / reject link and repo suggestions (PIPE-38);
  *  - `GET  /posts/{slug}/markdown`  — a failed post's Markdown, for editing (PIPE-36);
  *  - `POST /posts/{slug}/markdown`  — save an edit to a failed post (PIPE-36);
  *  - `POST /posts/{slug}/rereview`  — send a failed post back for review (PIPE-36);
@@ -55,6 +57,9 @@ export async function handler(
     }
     if (method === 'POST' && resource === '/posts/{slug}/decision') {
       return await postDecision(event);
+    }
+    if (method === 'POST' && resource === '/posts/{slug}/suggestions') {
+      return await postSuggestions(event);
     }
     if (method === 'GET' && resource === '/posts/{slug}/markdown') {
       return await getFailedMarkdown(event);

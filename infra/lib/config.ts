@@ -178,6 +178,75 @@ export const IMAGE = {
   },
 } as const;
 
+/**
+ * Link and repo suggestions (PIPE-38).
+ *
+ * After the review loop passes, a best-effort step proposes links to earlier
+ * posts and `repos:` entries for the bag. Haiku only *chooses* from lists the
+ * code builds; it never writes a URL. The embedding settings must match
+ * `blog-app/scripts/ingest-blog.py`, which writes the index this step reads.
+ */
+export const LINKS = {
+  /**
+   * Claude Haiku via the direct Anthropic API, with the same key as the Opus
+   * reviewer (`${ssmPrefix}/reviewer/anthropic`). Not Bedrock: AWS refuses
+   * `anthropic.claude-haiku-5-5` for these accounts.
+   */
+  model: 'claude-haiku-5-5',
+  /** Titan Embed Text v2 — must match the model that built the index. */
+  embedModel: 'amazon.titan-embed-text-v2:0',
+  /** Dimensions of the index vectors — a different length means an incompatible index. */
+  embedDims: 1024,
+  /** Region Titan is called in (where ingest-blog.py and the search Lambda call it). */
+  embedRegion: 'us-east-1',
+  /** Object key of the embeddings index in the nakom.is private bucket. */
+  embeddingsKey: 'blog-embeddings.json',
+  retrieval: {
+    /** Window size, matching the index's 700-character chunks. */
+    windowChars: 700,
+    /** Upper bound on windows embedded per post (cost guard). */
+    maxWindows: 80,
+    /** Candidate posts handed to Haiku. */
+    topPosts: 8,
+    /**
+     * Minimum chunk-to-chunk cosine similarity for a candidate. Calibrated on
+     * 18 Oct 2026 against the prod index: seven known cross-links scored
+     * 0.49 to 0.80 (median about 0.6), whilst the Cabal post scored 0.31
+     * (rank 28 of 43) against the Alexa announce post it must not be linked from.
+     */
+    floor: 0.45,
+    /** Fewer candidates than this triggers the catalogue fallback. */
+    minCandidates: 3,
+    /** Evidence passages kept per candidate. */
+    evidencePerPost: 2,
+  },
+  /** Give Haiku every eligible post (title + excerpt) when retrieval finds too few. */
+  catalogueFallback: true,
+  /** At most one new link per this many words (minimum one per post). */
+  wordsPerLink: 300,
+  /** Upper bound on link suggestions per post, whatever its length. */
+  maxLinks: 10,
+  /** Upper bound on repo suggestions per post. */
+  maxRepos: 5,
+  /** Forks are rarely what a post is about. */
+  excludeForks: true,
+  /** Hard stop for the Lambda task inside the state machine (seconds). */
+  taskTimeoutSeconds: 150,
+} as const;
+
+/**
+ * Name of the nakom.is private bucket that holds `blog-embeddings.json`.
+ * Derived exactly as `nakom.is/lib/deploy-env.ts` does (`envSuffix`).
+ */
+export function privateBucketName(deployEnv: DeployEnv): string {
+  return `nakom.is-private${deployEnv === 'prod' ? '' : '-sandbox'}`;
+}
+
+/** GitHub owners whose public repos may be suggested — the owner of `BLOG_CONTENT_REPO`. */
+export function githubOwners(): string[] {
+  return [BLOG_CONTENT_REPO.split('/')[0]];
+}
+
 /** Name of the failure-alerts SNS topic (PIPE-15) — fixed so ARNs derive from it. */
 export function alertsTopicName(deployEnv: DeployEnv): string {
   return `blog-pipeline-alerts-${deployEnv}`;

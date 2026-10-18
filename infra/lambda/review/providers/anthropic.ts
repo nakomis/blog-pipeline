@@ -1,6 +1,6 @@
 import { createAnthropic } from '@ai-sdk/anthropic';
 import type { LanguageModel } from 'ai';
-import { REVIEW } from '../../../lib/config';
+import { LINKS, REVIEW } from '../../../lib/config';
 import { readParameterJson, requireEnv } from '../runtime';
 
 /**
@@ -19,4 +19,15 @@ export async function reviewerModel(): Promise<LanguageModel> {
   );
   const anthropic = createAnthropic({ apiKey: secret.apiKey });
   return anthropic(REVIEW.models.anthropic);
+}
+
+/**
+ * The link/repo suggestion model (PIPE-38) — Claude Haiku via the direct
+ * Anthropic API, using the same key parameter as the reviewer.
+ */
+export async function suggestModel(): Promise<LanguageModel> {
+  const secret = await readParameterJson<AnthropicSecret>(
+    requireEnv('ANTHROPIC_PARAM_NAME'),
+  );
+  return createAnthropic({ apiKey: secret.apiKey })(LINKS.model);
 }

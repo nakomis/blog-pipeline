@@ -31,3 +31,4 @@ export function reviewerModel(provider: ReviewProvider): Promise<LanguageModel> 
 }
 
 export { redraftModel } from './bedrock';
+export { suggestModel } from './anthropic';

@@ -24,6 +24,9 @@ jest.mock('../../../lambda/api/failed-edit', () => ({
 jest.mock('../../../lambda/api/repo-checks', () => ({
   repoChecks: jest.fn().mockResolvedValue({ statusCode: 200, body: 'repos' }),
 }));
+jest.mock('../../../lambda/api/suggestions', () => ({
+  postSuggestions: jest.fn().mockResolvedValue({ statusCode: 200, body: 'suggestions' }),
+}));
 jest.mock('../../../lambda/api/publish-now', () => ({
   publishNow: jest.fn().mockResolvedValue({ statusCode: 202, body: 'published' }),
 }));
@@ -35,6 +38,7 @@ import { imageCredit } from '../../../lambda/api/image-credit';
 import { postDetail } from '../../../lambda/api/post-detail';
 import { postEdit, postDecision } from '../../../lambda/api/post-actions';
 import { publishNow } from '../../../lambda/api/publish-now';
+import { postSuggestions } from '../../../lambda/api/suggestions';
 import { repoChecks } from '../../../lambda/api/repo-checks';
 import {
   getFailedMarkdown,
@@ -88,6 +92,13 @@ test('routes POST /posts/{slug}/decision to postDecision', async () => {
   await handler(event('POST', '/posts/{slug}/decision'));
   expect(mockDecision).toHaveBeenCalled();
   expect(mockEdit).not.toHaveBeenCalled();
+});
+
+test('routes POST /posts/{slug}/suggestions to postSuggestions (PIPE-38)', async () => {
+  const res = await handler(event('POST', '/posts/{slug}/suggestions'));
+  expect(res.body).toBe('suggestions');
+  expect(postSuggestions).toHaveBeenCalled();
+  expect(mockDecision).not.toHaveBeenCalled();
 });
 
 test('routes POST /publish-now to publishNow', async () => {

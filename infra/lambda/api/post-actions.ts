@@ -11,7 +11,9 @@ import type {
 } from 'aws-lambda';
 import { draftKey, putDraft } from '../review/drafts';
 import { requireEnv } from '../review/runtime';
+import type { SuggestionsSummary } from '../suggest/schema';
 import { corsHeaders, jsonResponse } from './http';
+import { applyAcceptedSuggestions } from './suggestions';
 
 /**
  * The bag's write actions (PIPE-4).
@@ -32,6 +34,7 @@ interface PostItem {
   status?: string;
   latestIteration?: number;
   reviewIteration?: number;
+  suggestionsSummary?: SuggestionsSummary;
 }
 
 async function getPost(slug: string): Promise<PostItem | undefined> {
@@ -186,21 +189,41 @@ export async function postDecision(
   const nextStatus = approved ? 'approved' : 'failed';
   const timestampAttr = approved ? 'approvedAt' : 'rejectedAt';
 
+  // PIPE-38: accepted link suggestions are written into the final draft here,
+  // before the status flips, so the draft the promotion step reads has them.
+  // Nothing pending or rejected is applied. A failure throws and leaves the
+  // post staged, so the click can be repeated.
+  const suggestions = approved ? await applyAcceptedSuggestions(slug, post) : null;
+  const approvedRepos = suggestions?.approvedRepos ?? [];
+
   await docClient.send(
     new UpdateCommand({
       TableName: requireEnv('POSTS_TABLE_NAME'),
       Key: { slug },
       UpdateExpression:
         `SET #st = :status, updatedAt = :now, ${timestampAttr} = :now` +
-        (approved ? ', announceBluesky = :announce' : ''),
+        (approved ? ', announceBluesky = :announce' : '') +
+        (approvedRepos.length > 0 ? ', approvedRepos = :repos' : ''),
       ExpressionAttributeNames: { '#st': 'status' },
       ExpressionAttributeValues: {
         ':status': nextStatus,
         ':now': now,
         ...(approved ? { ':announce': announceBluesky } : {}),
+        ...(approvedRepos.length > 0 ? { ':repos': approvedRepos } : {}),
       },
     }),
   );
 
-  return jsonResponse(200, { slug, decision, status: nextStatus }, cors);
+  return jsonResponse(
+    200,
+    {
+      slug,
+      decision,
+      status: nextStatus,
+      ...(suggestions
+        ? { applied: suggestions.applied, skipped: suggestions.skipped }
+        : {}),
+    },
+    cors,
+  );
 }
