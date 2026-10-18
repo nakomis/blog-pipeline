@@ -99,8 +99,29 @@ describe('affiliate note (PIPE-41)', () => {
     expect(screen.getByText(/2 product mentions found for affiliate links; 1 still to do/)).toBeInTheDocument();
   });
 
-  test('says nothing when there were none', () => {
+  test('says so when no product mentions were found', () => {
     renderSummary({ affiliatesStatus: 'ok', affiliates: [] });
+    expect(screen.getByText('No product mentions were found for affiliate links.')).toBeInTheDocument();
+  });
+
+  test('says nothing about affiliates for a file from before the step existed', () => {
+    renderSummary();
     expect(screen.queryByText(/product mention/)).not.toBeInTheDocument();
+  });
+
+  test('a skipped link half does not hide the affiliate state or the dropped list', () => {
+    renderSummary({
+      status: 'skipped',
+      skippedReason: 'no-embeddings-index',
+      links: [],
+      repos: [],
+      affiliatesStatus: 'ok',
+      affiliates: [],
+      dropped: [{ kind: 'affiliate', value: 'Echo Dot', reason: 'the anchor is not in the sentence' }],
+    });
+    expect(screen.getByText(/the step was skipped \(no-embeddings-index\)/)).toBeInTheDocument();
+    expect(screen.getByText('No product mentions were found for affiliate links.')).toBeInTheDocument();
+    expect(screen.getByText(/Dropped by validation \(1\)/)).toBeInTheDocument();
+    expect(screen.getByText(/the anchor is not in the sentence/)).toBeInTheDocument();
   });
 });

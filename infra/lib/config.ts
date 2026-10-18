@@ -246,6 +246,13 @@ export const AFFILIATE = {
   shortHosts: ['amzn.to', 'link.amazon', 'amzn.eu', 'a.co'],
   /** Martin's Associates tag: the store id, or a per-post id. */
   tagPattern: '^nakomis(-[a-z0-9]+)*-21$',
+  /**
+   * The raw pasted text must match this ASCII-only form exactly (lower-case, no
+   * port, no sign-in details, none of `\ ' [ ] ( ) < > " ` or whitespace), so that
+   * `new URL()` normalisation cannot let through a link the promotion check reads
+   * differently.
+   */
+  rawPattern: "^https://(www\\.)?amazon\\.co\\.uk/[!#-&*-;=?-Z^_a-~]*$",
   /** A per-post tracking id that may be entered in the bag (not the bare store id). */
   trackingIdPattern: '^nakomis(-[a-z0-9]+)+-21$',
   maxUrlChars: 2000,

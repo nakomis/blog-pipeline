@@ -47,6 +47,34 @@ describe('validateAffiliateUrl', () => {
     expect(r.ok === false && r.error.toLowerCase()).toContain(fragment.toLowerCase());
   });
 
+  test.each([
+    ['an explicit default port', 'https://www.amazon.co.uk:443/dp/B0F4D8ZY6L?tag=nakomis-21'],
+    ['an empty userinfo', 'https://@www.amazon.co.uk/dp/B0F4D8ZY6L?tag=nakomis-21'],
+    ['an upper-case scheme', 'HTTPS://www.amazon.co.uk/dp/B0F4D8ZY6L?tag=nakomis-21'],
+    ['an upper-case host', 'https://WWW.AMAZON.CO.UK/dp/B0F4D8ZY6L?tag=nakomis-21'],
+    ['a full-width host', 'https://ｗｗｗ.amazon.co.uk/dp/B0F4D8ZY6L?tag=nakomis-21'],
+    ['a full-width dot in the host', 'https://www.amazon。co.uk/dp/B0F4D8ZY6L?tag=nakomis-21'],
+    ['an IDN look-alike host', 'https://www.amazοn.co.uk/dp/B0F4D8ZY6L?tag=nakomis-21'],
+    ['a backslash after the host', 'https://www.amazon.co.uk\\dp/B0F4D8ZY6L?tag=nakomis-21'],
+    ['a backslash in the path', 'https://www.amazon.co.uk/dp\\B0F4D8ZY6L?tag=nakomis-21'],
+    ['a single quote', "https://www.amazon.co.uk/dp/B0F4D8ZY6L?tag=nakomis-21'"],
+    ['a square bracket', 'https://www.amazon.co.uk/dp/B0F4D8ZY6L?tag=nakomis-21[1]'],
+    ['a non-ASCII character in the path', 'https://www.amazon.co.uk/dp/B0F4D8ZYé?tag=nakomis-21'],
+    ['no path at all', 'https://www.amazon.co.uk?tag=nakomis-21'],
+  ])('rejects %s, which new URL() would quietly tidy', (_name, raw) => {
+    expect(check(raw).ok).toBe(false);
+  });
+
+  test('says what is wrong with a trailing-dot host, rather than that it is not amazon.co.uk', () => {
+    const r = check('https://www.amazon.co.uk./dp/B0F4D8ZY6L?tag=nakomis-21');
+    expect(r.ok === false && r.error).toContain('ends with a dot');
+  });
+
+  test('explains a link that is only odd in the raw text', () => {
+    const r = check('HTTPS://www.amazon.co.uk/dp/B0F4D8ZY6L?tag=nakomis-21');
+    expect(r.ok === false && r.error).toContain('plain form');
+  });
+
   test.each(['amzn.to/3abc', 'link.amazon/abc', 'amzn.eu/d/abc', 'a.co/d/abc'])(
     'rejects the short link %s and asks for the Full link',
     (host) => {
@@ -214,12 +242,30 @@ describe('validateProducts', () => {
     expect(validate([prod({ anchor_text: 'Mars 5 Ultra' })]).dropped[0].reason).toMatch(/not in the sentence/);
   });
 
+  test('anchor length: one character is dropped for length, two are accepted', () => {
+    const body = 'I use a Q daily. I also use a Q2 daily.';
+    const run = (anchor: string, quote: string) =>
+      validateProducts({
+        picks: [prod({ anchor_text: anchor, quote, product_name: anchor })],
+        body,
+        linkRanges: [],
+        existingAmazonTexts: [],
+        maxMentions: 8,
+      });
+    const one = run('Q', 'I use a Q daily.');
+    expect(one.accepted).toEqual([]);
+    expect(one.dropped[0].reason).toMatch(/2 to 60 characters/);
+    expect(run('Q2', 'I also use a Q2 daily.').accepted).toHaveLength(1);
+  });
+
   test.each([
-    ['one', 'x'],
-    ['a b c d e f g', 'too long'],
-    ['[Creality]', 'brackets'],
-  ])('drops a bad anchor %s', (anchor) => {
-    expect(validate([prod({ anchor_text: anchor })]).accepted).toEqual([]);
+    ['a b c d e f g', 'too many words', /at most 6 words/],
+    ['x'.repeat(61), 'too long', /2 to 60 characters/],
+    ['[Creality]', 'brackets', /brackets/],
+  ])('drops a bad anchor %s (%s)', (anchor, _why, reason) => {
+    const r = validate([prod({ anchor_text: anchor })]);
+    expect(r.accepted).toEqual([]);
+    expect(r.dropped[0].reason).toMatch(reason);
   });
 
   test('drops an anchor inside a link, heading, code or shortcode', () => {

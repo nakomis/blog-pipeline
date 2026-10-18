@@ -4,7 +4,7 @@ import type { Components } from 'react-markdown';
 import type { AffiliateMention } from '../api/post-detail';
 import { AffiliateRow } from './AffiliateRow';
 import type { SaveResult } from './AffiliateRow';
-import { walkText } from './markMarks';
+import { OPAQUE, walkText } from './markMarks';
 import type { MdastNode } from './markMarks';
 
 /**
@@ -61,15 +61,86 @@ function splitAffiliate(
   return out;
 }
 
+/** Markdown emphasis characters, which are in the source but not in the rendered text. */
+const stripMarkup = (text: string): string => text.replace(/[*_~`]/g, '');
+
+/** The rendered prose of a block: its text nodes, minus links, code and the like. */
+function proseOf(node: MdastNode): string {
+  if (OPAQUE.has(node.type)) {
+    return '';
+  }
+  if (node.type === 'text') {
+    return node.value ?? '';
+  }
+  return (node.children ?? []).map(proseOf).join('');
+}
+
+/**
+ * Second chance for a mention whose before + anchor + after is split across
+ * inline formatting (the anchor inside bold, say): find the paragraph whose
+ * rendered text holds the locator with the markup removed, and highlight the
+ * anchor alone, in the first text node of that paragraph that holds it.
+ */
+function fallbackPass(
+  node: MdastNode,
+  mentions: AffiliateMention[],
+  placed: Set<string>,
+): void {
+  if (OPAQUE.has(node.type)) {
+    return;
+  }
+  if (node.type === 'paragraph') {
+    const prose = proseOf(node);
+    for (const m of mentions) {
+      if (placed.has(m.id)) {
+        continue;
+      }
+      if (prose.includes(stripMarkup(m.before) + m.anchorText + stripMarkup(m.after))) {
+        walkText(node, (text) => splitAnchorOnly(text, m, placed));
+      }
+    }
+    return;
+  }
+  for (const child of node.children ?? []) {
+    fallbackPass(child, mentions, placed);
+  }
+}
+
+function splitAnchorOnly(node: MdastNode, m: AffiliateMention, placed: Set<string>): MdastNode[] {
+  const value = node.value ?? '';
+  const at = placed.has(m.id) ? -1 : value.indexOf(m.anchorText);
+  if (at === -1) {
+    return [node];
+  }
+  placed.add(m.id);
+  const out: MdastNode[] = [];
+  if (at > 0) {
+    out.push({ type: 'text', value: value.slice(0, at) });
+  }
+  out.push({
+    type: 'affiliateMark',
+    data: { hName: 'mark', hProperties: { 'data-affiliate-id': m.id } },
+    children: [{ type: 'text', value: m.anchorText }],
+  });
+  if (at + m.anchorText.length < value.length) {
+    out.push({ type: 'text', value: value.slice(at + m.anchorText.length) });
+  }
+  return out;
+}
+
 /**
  * A remark plugin that wraps each mention, in the one sentence it was found
- * in, in a `<mark>`. A mention whose surrounding text is split across inline
- * formatting is simply not highlighted (its row is still there).
+ * in, in a `<mark>`. When formatting splits the surrounding text, the anchor
+ * alone is matched within its paragraph instead; a mention that still cannot be
+ * placed is not highlighted (its row is still there).
  */
 export function affiliatePlugin(mentions: AffiliateMention[]) {
   return () => (tree: MdastNode) => {
     const placed = new Set<string>();
     walkText(tree, (node) => splitAffiliate(node, mentions, placed));
+    if (placed.size < mentions.length) {
+      fallbackPass(tree, mentions, placed);
+    }
   };
 }
 
@@ -130,7 +201,10 @@ export interface AffiliateStepProps {
   onSave: (id: string, url: string) => Promise<SaveResult>;
   onSkip: (id: string) => void;
   onReset: (id: string) => void;
-  onSkipRemaining: () => void;
+  /** Resolves false when the request failed. */
+  onSkipRemaining: () => Promise<boolean | void> | void;
+  /** Everything has been decided: move focus somewhere sensible (the Approve button). */
+  onAllDecided?: () => void;
   onSetTrackingId: (id: string | null) => Promise<{ ok: boolean; error?: string }>;
 }
 
@@ -239,6 +313,7 @@ export function AffiliateStep({
   onSkip,
   onReset,
   onSkipRemaining,
+  onAllDecided,
   onSetTrackingId,
 }: AffiliateStepProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -273,6 +348,15 @@ export function AffiliateStep({
     const next = order.find((m) => m.decision === 'pending' && !stale.has(m.id));
     if (next) {
       inputs.current.get(next.id)?.focus();
+    } else {
+      onAllDecided?.();
+    }
+  };
+
+  const skipRemaining = async () => {
+    const ok = await onSkipRemaining();
+    if (ok !== false) {
+      onAllDecided?.();
     }
   };
 
@@ -301,7 +385,7 @@ export function AffiliateStep({
             type="button"
             className="btn btn--small"
             disabled={pending.length === 0}
-            onClick={onSkipRemaining}
+            onClick={() => void skipRemaining()}
           >
             Skip all remaining ({pending.length})
           </button>

@@ -395,8 +395,17 @@ function PostDetailInner({ idToken }: { idToken: string }) {
     void sendAffiliates({ decisions: { [id]: { action: 'skip' } } }).catch(showError);
   const resetAffiliate = (id: string) =>
     void sendAffiliates({ decisions: { [id]: { action: 'reset' } } }).catch(showError);
-  const skipRemainingAffiliates = () =>
-    void sendAffiliates({ skipRemaining: true }).catch(showError);
+  const skipRemainingAffiliates = async (): Promise<boolean> => {
+    try {
+      await sendAffiliates({ skipRemaining: true });
+      return true;
+    } catch (err) {
+      showError(err);
+      return false;
+    }
+  };
+  // When nothing is left to decide, the natural next move is Approve.
+  const approveButton = useRef<HTMLButtonElement>(null);
   const setTrackingId = async (id: string | null) => {
     const response = await sendAffiliates({ trackingId: id });
     return response.trackingId ?? { ok: true };
@@ -536,7 +545,7 @@ function PostDetailInner({ idToken }: { idToken: string }) {
           : '';
       const skippedText =
         result.skipped && result.skipped.length > 0
-          ? ` ${result.skipped.length} accepted link${result.skipped.length === 1 ? ' was' : 's were'} skipped: ${result.skipped
+          ? ` ${result.skipped.length} link${result.skipped.length === 1 ? ' was' : 's were'} skipped: ${result.skipped
               .map((k) => k.reason)
               .join('; ')}.`
           : '';
@@ -596,6 +605,7 @@ function PostDetailInner({ idToken }: { idToken: string }) {
         </div>
         <div className="detail__actions">
           <button
+            ref={approveButton}
             type="button"
             className="btn btn--primary"
             disabled={!staged || busy}
@@ -799,6 +809,7 @@ function PostDetailInner({ idToken }: { idToken: string }) {
           onSkip={skipAffiliate}
           onReset={resetAffiliate}
           onSkipRemaining={skipRemainingAffiliates}
+          onAllDecided={() => approveButton.current?.focus()}
           onSetTrackingId={setTrackingId}
         />
       )}

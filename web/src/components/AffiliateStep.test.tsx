@@ -49,7 +49,8 @@ function setup(mentions = [MARS, PLATE], over: Partial<AffiliateStepProps> = {})
     onSave: vi.fn().mockResolvedValue({ ok: true, warnings: [] }),
     onSkip: vi.fn(),
     onReset: vi.fn(),
-    onSkipRemaining: vi.fn(),
+    onSkipRemaining: vi.fn().mockResolvedValue(true),
+    onAllDecided: vi.fn(),
     onSetTrackingId: vi.fn().mockResolvedValue({ ok: true }),
     ...over,
   };
@@ -76,10 +77,33 @@ describe('AffiliateStep', () => {
     expect(marks[0].closest('p')?.textContent).toContain('printed the lid');
   });
 
-  test('a mention split by emphasis is not highlighted but still has its row', () => {
+  test('a mention whose surroundings are split by emphasis is still highlighted, by its anchor alone', () => {
     setup([MARS, SPLIT]);
-    expect(document.querySelectorAll('mark[data-affiliate-id]').length).toBe(1);
+    const marks = document.querySelectorAll('mark[data-affiliate-id]');
+    expect(Array.from(marks).map((m) => m.getAttribute('data-affiliate-id'))).toEqual(['m1', 'm3']);
+    expect(marks[1].textContent).toBe('Creality CR6-SE');
+    expect(marks[1].closest('strong')).not.toBeNull();
     expect(screen.getAllByLabelText(/SiteStripe link for/)).toHaveLength(2);
+  });
+
+  test('the fallback stays inside the right paragraph and highlights once', () => {
+    // "Mars 5 Ultra" appears in two paragraphs; the second mention's locator only fits the second.
+    const md = 'First **Mars 5 Ultra** here.\n\nSecond the **Mars 5 Ultra** there.';
+    const first = mention('f', 'Mars 5 Ultra', 'First **', '** here.');
+    const second = mention('s', 'Mars 5 Ultra', 'Second the **', '** there.');
+    render(
+      <Markdown remarkPlugins={[affiliatePlugin([second, first])]}>{md}</Markdown>,
+    );
+    const marks = document.querySelectorAll('mark');
+    expect(marks).toHaveLength(2);
+    expect(marks[0].closest('p')?.textContent).toContain('First');
+    expect(marks[1].closest('p')?.textContent).toContain('Second');
+  });
+
+  test('the fallback does not highlight when the paragraph text does not fit', () => {
+    const lost = mention('x', 'Creality CR6-SE', 'Wrong **', '** words');
+    render(<Markdown remarkPlugins={[affiliatePlugin([lost])]}>{ARTICLE}</Markdown>);
+    expect(document.querySelectorAll('mark')).toHaveLength(0);
   });
 
   test('lists a row per mention in order and focuses the first undecided box', () => {
@@ -125,10 +149,11 @@ describe('AffiliateStep', () => {
     expect(document.querySelector('mark[data-affiliate-id="m2"]')).toHaveClass('aff-mark--skipped');
   });
 
-  test('Skip all remaining skips only what is pending, and is disabled when nothing is', () => {
+  test('Skip all remaining skips only what is pending, and is disabled when nothing is', async () => {
     const { props, view } = setup([MARS, { ...PLATE, decision: 'skipped' }]);
     fireEvent.click(screen.getByRole('button', { name: /Skip all remaining \(1\)/ }));
     expect(props.onSkipRemaining).toHaveBeenCalled();
+    await waitFor(() => expect(props.onAllDecided).toHaveBeenCalled());
     view.rerender(<AffiliateStep {...props} mentions={[{ ...MARS, decision: 'linked', url: URL_OK }]} />);
     expect(screen.getByRole('button', { name: /Skip all remaining \(0\)/ })).toBeDisabled();
   });
@@ -194,5 +219,36 @@ describe('affiliatePlugin', () => {
       </Markdown>,
     );
     expect(document.querySelectorAll('mark').length).toBe(0);
+  });
+});
+
+describe('AffiliateStep focus when everything is decided', () => {
+  test('saving the last pending mention hands focus on', async () => {
+    const { props } = setup([MARS, { ...PLATE, decision: 'skipped' }]);
+    const [only] = screen.getAllByLabelText(/SiteStripe link for/);
+    fireEvent.change(only, { target: { value: URL_OK } });
+    fireEvent.keyDown(only, { key: 'Enter' });
+    await waitFor(() => expect(props.onAllDecided).toHaveBeenCalled());
+  });
+
+  test('skipping the last pending mention hands focus on', () => {
+    const { props } = setup([MARS]);
+    fireEvent.keyDown(screen.getByLabelText(/SiteStripe link for/), { key: 'Enter', shiftKey: true });
+    expect(props.onAllDecided).toHaveBeenCalled();
+  });
+
+  test('not while another mention still needs a link', async () => {
+    const { props } = setup();
+    fireEvent.change(screen.getAllByLabelText(/SiteStripe link for/)[0], { target: { value: URL_OK } });
+    fireEvent.keyDown(screen.getAllByLabelText(/SiteStripe link for/)[0], { key: 'Enter' });
+    await waitFor(() => expect(props.onSave).toHaveBeenCalled());
+    expect(props.onAllDecided).not.toHaveBeenCalled();
+  });
+
+  test('a failed Skip all remaining does not move focus', async () => {
+    const { props } = setup([MARS], { onSkipRemaining: vi.fn().mockResolvedValue(false) });
+    fireEvent.click(screen.getByRole('button', { name: /Skip all remaining/ }));
+    await waitFor(() => expect(props.onSkipRemaining).toHaveBeenCalled());
+    expect(props.onAllDecided).not.toHaveBeenCalled();
   });
 });

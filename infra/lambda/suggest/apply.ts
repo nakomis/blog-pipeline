@@ -30,6 +30,11 @@ export interface LinkToApply {
 export interface ApplyResult {
   markdown: string;
   applied: string[];
+  /**
+   * Ids whose `[anchor](url)` was already in the text (a retried approval). They
+   * are also in `skipped`, but they count as applied: the link is there.
+   */
+  alreadyLinked: string[];
   skipped: { id: string; reason: string }[];
 }
 
@@ -37,6 +42,7 @@ export function applyLinkSuggestions(markdown: string, links: LinkToApply[]): Ap
   const { head, body } = splitFrontmatter(markdown);
   const protectedAt = protectedRanges(body);
   const skipped: ApplyResult['skipped'] = [];
+  const alreadyLinked: string[] = [];
   const planned: { id: string; start: number; end: number; replacement: string }[] = [];
 
   for (const link of links) {
@@ -50,6 +56,7 @@ export function applyLinkSuggestions(markdown: string, links: LinkToApply[]): Ap
     }
     if (body.includes(`[${link.anchorText}](${link.targetUrl})`)) {
       skipped.push({ id: link.id, reason: 'already linked' });
+      alreadyLinked.push(link.id);
     } else if (locatorFailed) {
       skipped.push({ id: link.id, reason: 'the text around the anchor has changed' });
     } else if (found.length !== 1) {
@@ -99,7 +106,7 @@ export function applyLinkSuggestions(markdown: string, links: LinkToApply[]): Ap
   for (const item of [...kept].reverse()) {
     out = out.slice(0, item.start) + item.replacement + out.slice(item.end);
   }
-  return { markdown: head + out, applied: kept.map((k) => k.id), skipped };
+  return { markdown: head + out, applied: kept.map((k) => k.id), alreadyLinked, skipped };
 }
 
 /** Carry decisions over from a previous file for suggestions with the same id. */

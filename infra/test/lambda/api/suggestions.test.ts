@@ -307,4 +307,58 @@ describe('applyAcceptedSuggestions with affiliate links (PIPE-41)', () => {
     serveSuggestions(suggestions({ status: 'error', affiliatesStatus: 'error' }));
     await expect(applyAcceptedSuggestions('p', post)).resolves.toBeNull();
   });
+
+  test('a retried approval still hands over the links that are already in the draft', async () => {
+    // The first attempt wrote the draft, then the row update failed; the retry finds the link there.
+    serveSuggestions(withAff());
+    s3Mock
+      .on(GetObjectCommand, { Key: 'p/iteration-3/draft.md' })
+      .resolves(s3Text(`---\ntitle: x\n---\n\nI asked [the Cabal](${URL_A}), then printed on the [Mars 5 Ultra](${AMZ}) today.\n`));
+    serveSource('amazon_tracking_id: "nakomis-bconn66-21"');
+    const out = await applyAcceptedSuggestions('p', post);
+    expect(out?.approvedAffiliateUrls).toEqual([AMZ]);
+    expect(out?.applied).toMatchObject({ links: 1, affiliates: 1 });
+    expect(out?.skipped).toEqual([]);
+    expect(s3Mock.commandCalls(PutObjectCommand).filter((c) => c.args[0].input.Key === 'p/iteration-3/draft.md')).toHaveLength(0);
+  });
+
+  test('the same product pasted for two mentions is linked once, the first in document order', async () => {
+    const DRAFT2 = '---\ntitle: x\n---\n\nFirst the Mars 5 Ultra, then the Mars Ultra again.\n';
+    serveSuggestions(
+      withAff({
+        links: [],
+        affiliates: [
+          mention({ id: 'first', anchorText: 'Mars 5 Ultra', before: 'First the ', after: ', then' }),
+          mention({ id: 'second', anchorText: 'Mars Ultra', before: 'then the ', after: ' again.', url: AMZ.replace('bconn66', 'bconn66') }),
+        ],
+      }),
+    );
+    s3Mock.on(GetObjectCommand, { Key: 'p/iteration-3/draft.md' }).resolves(s3Text(DRAFT2));
+    serveSource('amazon_tracking_id: "nakomis-bconn66-21"');
+    const out = await applyAcceptedSuggestions('p', post);
+    expect(out?.applied.affiliates).toBe(1);
+    expect(out?.approvedAffiliateUrls).toEqual([AMZ]);
+    expect(out?.skipped).toEqual([{ id: 'second', reason: 'the same product is already linked by an earlier mention' }]);
+    const put = s3Mock.commandCalls(PutObjectCommand).find((c) => c.args[0].input.Key === 'p/iteration-3/draft.md')!;
+    expect(put.args[0].input.Body).toBe(`---\ntitle: x\n---\n\nFirst the [Mars 5 Ultra](${AMZ}), then the Mars Ultra again.\n`);
+  });
+
+  test('different products are both linked', async () => {
+    const B = 'https://www.amazon.co.uk/dp/B0CRK47HXM?tag=nakomis-bconn66-21';
+    serveSuggestions(
+      withAff({
+        links: [],
+        affiliates: [
+          mention({ id: 'first', anchorText: 'Mars 5 Ultra', before: 'First the ', after: ', then' }),
+          mention({ id: 'second', anchorText: 'Mars Ultra', before: 'then the ', after: ' again.', url: B }),
+        ],
+      }),
+    );
+    s3Mock
+      .on(GetObjectCommand, { Key: 'p/iteration-3/draft.md' })
+      .resolves(s3Text('---\ntitle: x\n---\n\nFirst the Mars 5 Ultra, then the Mars Ultra again.\n'));
+    serveSource('amazon_tracking_id: "nakomis-bconn66-21"');
+    const out = await applyAcceptedSuggestions('p', post);
+    expect(out?.approvedAffiliateUrls).toEqual([AMZ, B]);
+  });
 });

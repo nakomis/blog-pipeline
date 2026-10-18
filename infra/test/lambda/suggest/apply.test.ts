@@ -169,6 +169,14 @@ describe('applyLinkSuggestions with a locator (PIPE-41)', () => {
     expect(out.skipped[0].reason).toMatch(/more than once/);
   });
 
+  test('reports ids already linked (a retried approval) separately from the skipped', () => {
+    const once = applyLinkSuggestions(md, [aff('I printed on the ', ' today.')]);
+    const again = applyLinkSuggestions(once.markdown, [aff('I printed on the ', ' today.')]);
+    expect(again.applied).toEqual([]);
+    expect(again.alreadyLinked).toEqual(['p']);
+    expect(once.alreadyLinked).toEqual([]);
+  });
+
   test('applies an affiliate link and a post link together, and is idempotent', () => {
     const both = `${FM}\nI asked the Cabal, then printed on the Mars 5 Ultra today.\n`;
     const out = applyLinkSuggestions(both, [

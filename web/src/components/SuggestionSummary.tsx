@@ -6,6 +6,21 @@ import type { LinkSuggestion, SuggestionDecision, Suggestions } from '../api/pos
  * be shown inline, and the audit list of what validation dropped. Suggested
  * repos are shown in the frontmatter panel, beside the repos already listed.
  */
+function DroppedList({ dropped }: { dropped: Suggestions['dropped'] }) {
+  return (
+    <details className="sugg-summary__dropped">
+      <summary>Dropped by validation ({dropped.length})</summary>
+      <ul>
+        {dropped.map((d, i) => (
+          <li key={`${d.kind}-${i}`}>
+            {d.kind}: <code>{d.value}</code> — {d.reason}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 function LinkAndRepoSummary({
   suggestions,
   stale,
@@ -23,12 +38,17 @@ function LinkAndRepoSummary({
   const { status, links, repos, dropped } = suggestions;
 
   if (status !== 'ok') {
+    // The link half did not run, but the affiliate half may have, and validation
+    // may have dropped affiliate picks: keep both visible.
     return (
-      <p className="sugg-summary sugg-summary--empty" role="status">
-        No link or repo suggestions: {status === 'error' ? 'the step failed' : 'the step was skipped'}
-        {suggestions.skippedReason ? ` (${suggestions.skippedReason})` : ''}. The post was staged
-        regardless.
-      </p>
+      <>
+        <p className="sugg-summary sugg-summary--empty" role="status">
+          No link or repo suggestions: {status === 'error' ? 'the step failed' : 'the step was skipped'}
+          {suggestions.skippedReason ? ` (${suggestions.skippedReason})` : ''}. The post was staged
+          regardless.
+        </p>
+        {dropped.length > 0 && <DroppedList dropped={dropped} />}
+      </>
     );
   }
 
@@ -83,18 +103,7 @@ function LinkAndRepoSummary({
         </div>
       )}
 
-      {dropped.length > 0 && (
-        <details className="sugg-summary__dropped">
-          <summary>Dropped by validation ({dropped.length})</summary>
-          <ul>
-            {dropped.map((d, i) => (
-              <li key={`${d.kind}-${i}`}>
-                {d.kind}: <code>{d.value}</code> — {d.reason}
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
+      {dropped.length > 0 && <DroppedList dropped={dropped} />}
     </section>
   );
 }
@@ -111,6 +120,9 @@ function affiliateNote(suggestions: Suggestions): string | null {
   if (suggestions.affiliatesStatus === 'ok' && n > 0) {
     const pending = (suggestions.affiliates ?? []).filter((a) => a.decision === 'pending').length;
     return `${n} product mention${n === 1 ? '' : 's'} found for affiliate links${pending > 0 ? `; ${pending} still to do in the Affiliate links tab` : ''}.`;
+  }
+  if (suggestions.affiliatesStatus === 'ok') {
+    return 'No product mentions were found for affiliate links.';
   }
   return null;
 }

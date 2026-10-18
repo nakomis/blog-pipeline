@@ -89,6 +89,46 @@ describe('AffiliateRow', () => {
     expect(box()).toHaveValue('');
   });
 
+  test('focus is still on the box after a refused link', async () => {
+    setup(mention(), {
+      onSave: vi.fn().mockResolvedValue({ ok: false, error: 'Nope.' }),
+    });
+    box().focus();
+    fireEvent.change(box(), { target: { value: 'https://amzn.to/x' } });
+    fireEvent.keyDown(box(), { key: 'Enter' });
+    await screen.findByText('Nope.');
+    expect(document.activeElement).toBe(box());
+  });
+
+  test('the box stays focusable while saving (read-only, not disabled)', async () => {
+    let finish: (r: { ok: boolean }) => void = () => undefined;
+    setup(mention(), { onSave: vi.fn().mockReturnValue(new Promise((r) => { finish = r; })) });
+    box().focus();
+    fireEvent.change(box(), { target: { value: URL_OK } });
+    fireEvent.keyDown(box(), { key: 'Enter' });
+    await waitFor(() => expect(box()).toHaveAttribute('aria-busy', 'true'));
+    expect(box()).toHaveAttribute('readonly');
+    expect(box()).not.toBeDisabled();
+    expect(document.activeElement).toBe(box());
+    finish({ ok: false });
+    await waitFor(() => expect(box()).not.toHaveAttribute('aria-busy'));
+  });
+
+  test('a network failure also leaves focus on the box', async () => {
+    setup(mention(), { onSave: vi.fn().mockRejectedValue(new Error('offline')) });
+    box().focus();
+    fireEvent.change(box(), { target: { value: URL_OK } });
+    fireEvent.keyDown(box(), { key: 'Enter' });
+    await screen.findByText(/offline/);
+    expect(document.activeElement).toBe(box());
+  });
+
+  test('warnings sit in a polite live region that is there before they arrive', () => {
+    setup(mention({ decision: 'linked', url: URL_OK, warnings: ['Heads up.'] }));
+    const live = screen.getByText('Heads up.').closest('[aria-live]');
+    expect(live).toHaveAttribute('aria-live', 'polite');
+  });
+
   test('a rejected link keeps the text and focus, and says why', async () => {
     const p = setup(mention(), {
       onSave: vi.fn().mockResolvedValue({ ok: false, error: "Use SiteStripe's Full link." }),

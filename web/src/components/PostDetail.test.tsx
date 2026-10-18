@@ -675,7 +675,7 @@ describe('PostDetail — link and repo suggestions (PIPE-38)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
 
     expect(
-      await screen.findByText(/Applied 1 link and 1 repo\. 1 accepted link was skipped: the anchor text is no longer/),
+      await screen.findByText(/Applied 1 link and 1 repo\. 1 link was skipped: the anchor text is no longer/),
     ).toBeInTheDocument();
   });
 
@@ -921,6 +921,36 @@ describe('PostDetail — affiliate links (PIPE-41)', () => {
     );
     expect(await screen.findAllByText('Skipped')).toHaveLength(2);
     expect(screen.queryByText(/mentions? (had|have) no affiliate link decision/)).not.toBeInTheDocument();
+  });
+
+  test('once every mention is decided, focus moves to Approve', async () => {
+    mockedFetch.mockResolvedValue(detail([m1]));
+    mockedSetAffiliates.mockResolvedValue({
+      suggestions: detail([{ ...m1, decision: 'linked', url: AMZ, warnings: [] }]).suggestions!,
+      results: { a1: { ok: true, warnings: [] } },
+    });
+    await open();
+    fireEvent.click(tab());
+    const [first] = screen.getAllByLabelText(/SiteStripe link for/);
+    fireEvent.change(first, { target: { value: AMZ } });
+    fireEvent.keyDown(first, { key: 'Enter' });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Approve' })).toHaveFocus());
+  });
+
+  test('Skip all remaining also ends on Approve, but not if the request fails', async () => {
+    mockedFetch.mockResolvedValue(detail());
+    mockedSetAffiliates.mockRejectedValueOnce(new Error('Failed to save affiliate choice (HTTP 500)'));
+    await open();
+    fireEvent.click(tab());
+    fireEvent.click(screen.getByRole('button', { name: /Skip all remaining/ }));
+    await screen.findByText(/HTTP 500/);
+    expect(screen.getByRole('button', { name: 'Approve' })).not.toHaveFocus();
+    mockedSetAffiliates.mockResolvedValue({
+      suggestions: detail([{ ...m1, decision: 'skipped' }, { ...m2, decision: 'skipped' }]).suggestions!,
+      results: {},
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Skip all remaining/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Approve' })).toHaveFocus());
   });
 
   test('a failed request is shown on the row and does not break the page', async () => {

@@ -19,6 +19,7 @@ import type { AffiliateMention, DroppedSuggestion, ProductPick } from './schema'
  */
 
 const TAG_RE = new RegExp(AFFILIATE.tagPattern);
+const RAW_RE = new RegExp(AFFILIATE.rawPattern);
 const TRACKING_ID_RE = new RegExp(AFFILIATE.trackingIdPattern);
 
 /** Path shapes that carry an ASIN, as in the blog build (`amazonLinks.ts`). */
@@ -88,8 +89,8 @@ export function validateAffiliateUrl(raw: string, ctx: UrlContext): UrlResult {
   if (/\s/.test(text)) {
     return fail('The link contains whitespace: paste only the link.');
   }
-  if (/[()<>"`]/.test(text)) {
-    return fail('The link contains brackets or quotes, which would break the Markdown.');
+  if (/[()<>"'`\\[\]]/.test(text)) {
+    return fail('The link contains brackets, quotes or backslashes, which would break the Markdown.');
   }
   if (url.protocol !== 'https:') {
     return fail('The link must start with https://.');
@@ -102,6 +103,9 @@ export function validateAffiliateUrl(raw: string, ctx: UrlContext): UrlResult {
   }
 
   const host = url.hostname.toLowerCase();
+  if (host.endsWith('.') && (AFFILIATE.hosts as readonly string[]).includes(host.slice(0, -1))) {
+    return fail('The host ends with a dot: paste the link exactly as SiteStripe gives it.');
+  }
   if ((AFFILIATE.shortHosts as readonly string[]).includes(host)) {
     return fail(
       "That is a short link. Use SiteStripe's Full link: a short link hides the tag, and the blog build refuses it.",
@@ -112,6 +116,15 @@ export function validateAffiliateUrl(raw: string, ctx: UrlContext): UrlResult {
       return fail(`Only amazon.co.uk links count: a UK tag earns nothing on ${host}.`);
     }
     return fail('The link must be on amazon.co.uk.');
+  }
+
+  // `new URL()` tidies things (`:443`, upper case, full-width or IDN hosts, a
+  // bare `@`); the link is stored and written as pasted, so the pasted text
+  // itself must be the plain form.
+  if (!RAW_RE.test(text)) {
+    return fail(
+      'The link is not in the plain form SiteStripe gives: https://www.amazon.co.uk/... in lower case, with no port, sign-in details or unusual characters.',
+    );
   }
 
   const tags = url.searchParams.getAll('tag');

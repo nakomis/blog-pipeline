@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import type { AffiliateMention } from '../api/post-detail';
 
@@ -45,6 +45,7 @@ export function AffiliateRow({
   const [value, setValue] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const input = useRef<HTMLInputElement | null>(null);
   const errorId = `aff-err-${mention.id}`;
 
   const save = async () => {
@@ -60,9 +61,11 @@ export function AffiliateRow({
         onAdvance(mention.id);
       } else {
         setError(result.error ?? 'That link was not accepted.');
+        input.current?.focus();
       }
     } catch (err) {
       setError(`Could not save: ${err instanceof Error ? err.message : String(err)}`);
+      input.current?.focus();
     } finally {
       setBusy(false);
     }
@@ -115,15 +118,18 @@ export function AffiliateRow({
           <a href={mention.url} target="_blank" rel="noopener noreferrer">
             {mention.url}
           </a>
-          {mention.warnings && mention.warnings.length > 0 && (
-            <ul className="aff-row__warnings">
-              {mention.warnings.map((w) => (
-                <li key={w}>{w}</li>
-              ))}
-            </ul>
-          )}
         </div>
       )}
+      {/* Always present, so a warning that arrives with a successful save is announced. */}
+      <div className="aff-row__live" aria-live="polite">
+        {mention.decision === 'linked' && mention.warnings && mention.warnings.length > 0 && (
+          <ul className="aff-row__warnings">
+            {mention.warnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       {stale && mention.decision === 'pending' && (
         <p className="aff-row__stale">
@@ -137,13 +143,19 @@ export function AffiliateRow({
           <label>
             <span className="aff-row__label">SiteStripe link for “{mention.anchorText}”</span>
             <input
-              ref={(el) => registerInput(mention.id, el)}
+              ref={(el) => {
+                input.current = el;
+                registerInput(mention.id, el);
+              }}
               type="url"
               inputMode="url"
               autoComplete="off"
               spellCheck={false}
               value={value}
-              disabled={busy}
+              // readOnly, not disabled: a disabled input drops focus, which keyboard
+              // users would lose on every refused link.
+              readOnly={busy}
+              aria-busy={busy || undefined}
               aria-invalid={error ? 'true' : undefined}
               aria-describedby={error ? errorId : undefined}
               aria-keyshortcuts="Enter Shift+Enter Escape"

@@ -250,7 +250,11 @@ writes or edits a link or a tag; it only points at words.
   `amzn.eu`, `a.co`) are rejected with "use SiteStripe's Full link", because the
   tag is hidden and the blog build refuses them. A tag that differs from the
   post's tracking ID, a missing tracking ID, a non-product page and a repeated
-  product are warnings. The link is stored and later written exactly as pasted.
+  product are warnings. The pasted text itself must also match a plain ASCII form
+  (`AFFILIATE.rawPattern`: lower case, no port or sign-in details, no backslashes,
+  quotes, brackets or whitespace), so URL tidying cannot let through a link that promotion would
+  read differently. At approval the same product pasted twice is linked once (the
+  first). The link is stored and later written exactly as pasted.
 - **Route.** `POST /posts/{slug}/affiliates`
   (`{decisions: {id: {action: 'link', url} | {action: 'skip'} | {action: 'reset'}}, skipRemaining?, trackingId?}`),
   staged posts only.

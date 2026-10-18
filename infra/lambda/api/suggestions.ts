@@ -158,11 +158,21 @@ export async function applyAcceptedSuggestions(
   }));
   const affiliateIds = new Set<string>();
   const affiliateUrls = new Map<string, string>();
+  // The same product pasted for two mentions is linked once: the first in
+  // document order (the list is in that order), as the pasted-link warning says.
+  const seenAsins = new Set<string>();
   for (const m of mentions.filter((a) => a.decision === 'linked' && a.url)) {
     const checked = validateAffiliateUrl(m.url as string, { effectiveTrackingId, otherAsins: [] });
     if (!checked.ok) {
       skipped.push({ id: m.id, reason: checked.error });
       continue;
+    }
+    if (checked.asin) {
+      if (seenAsins.has(checked.asin)) {
+        skipped.push({ id: m.id, reason: 'the same product is already linked by an earlier mention' });
+        continue;
+      }
+      seenAsins.add(checked.asin);
     }
     affiliateIds.add(m.id);
     affiliateUrls.set(m.id, checked.url);
@@ -188,8 +198,9 @@ export async function applyAcceptedSuggestions(
       const written =
         result.markdown === body || (await putDraftIfMatch(key, result.markdown, etag));
       if (written) {
-        appliedIds = result.applied;
-        skipped.push(...result.skipped);
+        // A retried approval finds its links already written: they count as applied.
+        appliedIds = [...result.applied, ...result.alreadyLinked];
+        skipped.push(...result.skipped.filter((k) => !result.alreadyLinked.includes(k.id)));
         break;
       }
       if (attempt >= 2) {
