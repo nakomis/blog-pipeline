@@ -38,6 +38,48 @@ export interface ImageDetail {
   url?: string;
 }
 
+/** A parsed frontmatter value: text, a list, or a nested mapping. */
+export type FrontmatterValue =
+  | string
+  | FrontmatterValue[]
+  | { [key: string]: FrontmatterValue };
+
+/** One frontmatter check result (PIPE-37). Always a warning, never a blocker. */
+export interface FrontmatterWarning {
+  code:
+    | 'missing-field'
+    | 'canonical-mismatch'
+    | 'date-mismatch'
+    | 'approved-by-hand'
+    | 'frontmatter-missing'
+    | 'frontmatter-invalid'
+    | 'frontmatter-changed'
+    | 'repos-malformed'
+    /** Added in the browser from the live GitHub check; never sent by the API. */
+    | 'repo-unreachable';
+  field?: string;
+  message: string;
+}
+
+/** The author's frontmatter, parsed, with the API's warnings. */
+export interface FrontmatterInfo {
+  present: boolean;
+  raw: string | null;
+  fields: Record<string, FrontmatterValue> | null;
+  parseError?: string;
+  /** False when the filename was unknown, so filename-based checks were skipped. */
+  filenameKnown: boolean;
+  warnings: FrontmatterWarning[];
+}
+
+/** Whether a `repos:` URL is visible on GitHub. */
+export interface RepoCheck {
+  name: string;
+  url: string;
+  state: 'ok' | 'private' | 'not-found' | 'unchecked' | 'error';
+  detail?: string;
+}
+
 /** The full detail bundle for one post — everything the bag renders. */
 export interface PostDetail {
   post: Post;
@@ -45,6 +87,8 @@ export interface PostDetail {
   originalMarkdown: string;
   iterations: IterationDetail[];
   images: ImageDetail[];
+  /** Absent when the web app is deployed ahead of the API. */
+  frontmatter?: FrontmatterInfo;
 }
 
 function authHeaders(idToken: string): Record<string, string> {
@@ -65,6 +109,23 @@ export async function fetchPostDetail(
     throw new Error(`Failed to fetch post (HTTP ${response.status})`);
   }
   return (await response.json()) as PostDetail;
+}
+
+/** Checks, live against GitHub, whether the post's `repos:` URLs are public. */
+export async function fetchRepoChecks(
+  slug: string,
+  idToken: string,
+): Promise<RepoCheck[]> {
+  const { apiUrl } = getConfig();
+  const response = await fetch(
+    `${apiUrl}/posts/${encodeURIComponent(slug)}/repo-checks`,
+    { headers: authHeaders(idToken) },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to check repositories (HTTP ${response.status})`);
+  }
+  const body = (await response.json()) as { repos: RepoCheck[] };
+  return body.repos;
 }
 
 export interface EditResult {
