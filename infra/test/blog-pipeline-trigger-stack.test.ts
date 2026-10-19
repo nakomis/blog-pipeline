@@ -193,6 +193,29 @@ describe('BlogPipelineTriggerStack', () => {
     expect(JSON.stringify(promotePolicy)).not.toContain('states:StartExecution');
   });
 
+  test('promote role may write blog-queue.json (HOME-502) and nothing else in the private bucket', () => {
+    const write = (config: EnvConfig, bucket: string) => {
+      const template = synth(config);
+      template.hasResourceProperties('AWS::IAM::Policy', {
+        PolicyDocument: Match.objectLike({
+          Statement: Match.arrayWith([
+            Match.objectLike({
+              Sid: 'PublishBlogQueue',
+              Action: 's3:PutObject',
+              Effect: 'Allow',
+              Resource: `arn:aws:s3:::${bucket}/blog-queue.json`,
+            }),
+          ]),
+        }),
+      });
+      // Exactly one statement mentions the private bucket: the one above.
+      const policies = JSON.stringify(template.findResources('AWS::IAM::Policy'));
+      expect(policies.split('nakom.is-private').length - 1).toBe(1);
+    };
+    write(prodConfig, 'nakom.is-private');
+    write(sandboxConfig, 'nakom.is-private-sandbox');
+  });
+
   test('prod synth produces the same shape with prod-prefixed names', () => {
     const template = synth(prodConfig);
     template.hasResourceProperties('AWS::IAM::Role', {

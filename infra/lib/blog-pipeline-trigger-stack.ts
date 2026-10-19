@@ -6,7 +6,13 @@ import * as sns from 'aws-cdk-lib/aws-sns';
 import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
-import { alertsTopicName, BLOG_CONTENT_REPO, EnvConfig } from './config';
+import {
+  alertsTopicName,
+  BLOG_CONTENT_REPO,
+  BLOG_QUEUE_KEY,
+  EnvConfig,
+  privateBucketName,
+} from './config';
 
 export interface BlogPipelineTriggerStackProps extends cdk.StackProps {
   config: EnvConfig;
@@ -38,7 +44,8 @@ export class BlogPipelineTriggerStack extends cdk.Stack {
   /**
    * The role the `promote-approved` workflow assumes (PIPE-5) to pull approved
    * posts back out of the pipeline. Read-only on the drafts bucket plus a
-   * narrow read/mark on the posts table — it never starts an execution.
+   * narrow read/mark on the posts table — it never starts an execution. It can
+   * also write the one object BD-1's blog-queue row reads (HOME-502).
    */
   public readonly promoteRole: iam.IRole;
 
@@ -157,6 +164,18 @@ export class BlogPipelineTriggerStack extends cdk.Stack {
         sid: 'FindAndMarkApproved',
         actions: ['dynamodb:Query', 'dynamodb:GetItem', 'dynamodb:UpdateItem'],
         resources: [postsTable.tableArn, `${postsTable.tableArn}/index/*`],
+      }),
+    );
+
+    // HOME-502: the daily run also publishes blog-queue.json (how many posts
+    // are scheduled) to nakom.is's private bucket for BD-1's menu-bar row.
+    // One key, write only: it cannot read, list or delete anything there. The
+    // bucket policy is enforce-SSL only, so this identity grant is enough.
+    promoteRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'PublishBlogQueue',
+        actions: ['s3:PutObject'],
+        resources: [`arn:aws:s3:::${privateBucketName(deployEnv)}/${BLOG_QUEUE_KEY}`],
       }),
     );
 
