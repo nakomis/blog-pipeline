@@ -474,3 +474,172 @@
 .repo-sugg--rejected {
   opacity: 0.55;
 }
+
+/* ── Affiliate link step (PIPE-41) ───────────────────────────────────── */
+.aff__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.5rem 1.5rem;
+  margin-bottom: 1rem;
+}
+.aff__tracking {
+  margin: 0;
+  font-size: 0.9rem;
+}
+.aff__tracking-warning {
+  margin: 0 0 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--panel);
+  border-left: 3px solid #e5c07b;
+  border-radius: 4px;
+}
+.aff__tracking-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+.aff__tracking-form label,
+.aff-row__form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 1 1 18rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.aff__tracking-form input,
+.aff-row__form input {
+  padding: 0.35rem 0.5rem;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--panel);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 0.9rem;
+}
+.aff__tracking-form input:focus-visible,
+.aff-row__form input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.aff__hint {
+  flex: 1 1 20rem;
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.aff__hint kbd {
+  padding: 0 0.3rem;
+  border: 1px solid var(--panel);
+  border-radius: 3px;
+  font-size: 0.8rem;
+}
+.aff__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(18rem, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+@media (max-width: 52rem) {
+  .aff__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.aff__list {
+  position: sticky;
+  top: 0.5rem;
+  max-height: calc(100vh - 1rem);
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+@media (max-width: 52rem) {
+  .aff__list {
+    position: static;
+    max-height: none;
+  }
+}
+.aff-row {
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--panel);
+  border-left: 3px solid #e5c07b;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+.aff-row--linked {
+  border-left-color: #98c379;
+}
+.aff-row--skipped,
+.aff-row--stale {
+  border-left-color: var(--muted);
+  opacity: 0.8;
+}
+.aff-row--active {
+  outline: 2px solid var(--accent);
+}
+.aff-row__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.aff-row__quote,
+.aff-row__reason {
+  margin: 0.3rem 0;
+}
+.aff-row__reason {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.aff-row__form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+.aff-row__linked a {
+  word-break: break-all;
+  font-size: 0.8rem;
+}
+.aff-row__warnings {
+  margin: 0.3rem 0 0;
+  padding-left: 1.1rem;
+  color: #e5c07b;
+  font-size: 0.82rem;
+}
+.aff-row__error,
+.aff-row__stale {
+  flex-basis: 100%;
+  margin: 0.2rem 0 0;
+  font-size: 0.85rem;
+}
+.aff-row__error {
+  color: #e06c75;
+}
+.aff-mark {
+  background: rgba(229, 192, 123, 0.28);
+  color: inherit;
+  border-bottom: 2px solid #e5c07b;
+  border-radius: 2px;
+  cursor: pointer;
+}
+.aff-mark--linked {
+  background: rgba(152, 195, 121, 0.28);
+  border-bottom-color: #98c379;
+}
+.aff-mark--linked::after {
+  content: ' \2713';
+}
+.aff-mark--skipped {
+  background: transparent;
+  border-bottom: 1px dotted var(--muted);
+}
+.aff-mark--active,
+.aff-mark:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

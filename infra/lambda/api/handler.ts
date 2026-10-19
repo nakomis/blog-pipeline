@@ -13,6 +13,7 @@ import { listPosts } from './list-posts';
 import { postDetail } from './post-detail';
 import { postEdit, postDecision } from './post-actions';
 import { publishNow } from './publish-now';
+import { postAffiliates } from './affiliates';
 import { postSuggestions } from './suggestions';
 import { repoChecks } from './repo-checks';
 import { corsHeaders, jsonResponse } from './http';
@@ -25,6 +26,7 @@ import { corsHeaders, jsonResponse } from './http';
  *  - `POST /posts/{slug}/edit`      — edit a staged draft, optionally re-review;
  *  - `POST /posts/{slug}/decision`  — approve or reject a staged post;
  *  - `POST /posts/{slug}/suggestions` — accept / reject link and repo suggestions (PIPE-38);
+ *  - `POST /posts/{slug}/affiliates` — paste or skip affiliate links for product mentions (PIPE-41);
  *  - `GET  /posts/{slug}/markdown`  — a failed post's Markdown, for editing (PIPE-36);
  *  - `POST /posts/{slug}/markdown`  — save an edit to a failed post (PIPE-36);
  *  - `POST /posts/{slug}/rereview`  — send a failed post back for review (PIPE-36);
@@ -60,6 +62,9 @@ export async function handler(
     }
     if (method === 'POST' && resource === '/posts/{slug}/suggestions') {
       return await postSuggestions(event);
+    }
+    if (method === 'POST' && resource === '/posts/{slug}/affiliates') {
+      return await postAffiliates(event);
     }
     if (method === 'GET' && resource === '/posts/{slug}/markdown') {
       return await getFailedMarkdown(event);

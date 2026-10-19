@@ -195,6 +195,10 @@ export async function postDecision(
   // post staged, so the click can be repeated.
   const suggestions = approved ? await applyAcceptedSuggestions(slug, post) : null;
   const approvedRepos = suggestions?.approvedRepos ?? [];
+  // PIPE-41: affiliate links written into the draft, and a typed tracking id,
+  // travel to promotion on the row (like approvedRepos).
+  const approvedAffiliateUrls = suggestions?.approvedAffiliateUrls ?? [];
+  const approvedTrackingId = suggestions?.approvedTrackingId;
 
   await docClient.send(
     new UpdateCommand({
@@ -203,13 +207,17 @@ export async function postDecision(
       UpdateExpression:
         `SET #st = :status, updatedAt = :now, ${timestampAttr} = :now` +
         (approved ? ', announceBluesky = :announce' : '') +
-        (approvedRepos.length > 0 ? ', approvedRepos = :repos' : ''),
+        (approvedRepos.length > 0 ? ', approvedRepos = :repos' : '') +
+        (approvedAffiliateUrls.length > 0 ? ', approvedAffiliateUrls = :aff' : '') +
+        (approvedTrackingId ? ', approvedTrackingId = :tid' : ''),
       ExpressionAttributeNames: { '#st': 'status' },
       ExpressionAttributeValues: {
         ':status': nextStatus,
         ':now': now,
         ...(approved ? { ':announce': announceBluesky } : {}),
         ...(approvedRepos.length > 0 ? { ':repos': approvedRepos } : {}),
+        ...(approvedAffiliateUrls.length > 0 ? { ':aff': approvedAffiliateUrls } : {}),
+        ...(approvedTrackingId ? { ':tid': approvedTrackingId } : {}),
       },
     }),
   );
@@ -221,7 +229,11 @@ export async function postDecision(
       decision,
       status: nextStatus,
       ...(suggestions
-        ? { applied: suggestions.applied, skipped: suggestions.skipped }
+        ? {
+            applied: suggestions.applied,
+            skipped: suggestions.skipped,
+            ...(suggestions.warnings ? { warnings: suggestions.warnings } : {}),
+          }
         : {}),
     },
     cors,

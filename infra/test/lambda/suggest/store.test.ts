@@ -96,3 +96,25 @@ test('an ok summary whose file is missing yields nothing, not a placeholder', as
   s3Mock.on(HeadObjectCommand).rejects(Object.assign(new Error('nf'), { name: 'NotFound' }));
   await expect(getCurrentSuggestions('p', summaryOf(base))).resolves.toBeNull();
 });
+
+test('summaryOf counts affiliate mentions when the affiliate step ran (PIPE-41)', () => {
+  const mention = {
+    id: 'm', kind: 'affiliate' as const, anchorText: 'a', productName: 'a', quote: 'a', before: '', after: '',
+    occurrence: { paragraph: 0, offset: 0 }, reason: '', decision: 'pending' as const,
+  };
+  expect(
+    summaryOf({
+      ...base,
+      affiliatesStatus: 'ok',
+      affiliates: [mention, { ...mention, id: 'n', decision: 'skipped' }],
+    }),
+  ).toMatchObject({ affiliates: 2, affiliatesUndecided: 1, affiliatesStatus: 'ok' });
+});
+
+test('the placeholder for a failed step carries the affiliate status (PIPE-41)', async () => {
+  s3Mock.on(HeadObjectCommand).rejects(Object.assign(new Error('nf'), { name: 'NotFound' }));
+  const placeholder = await getCurrentSuggestions('p', {
+    iteration: 2, status: 'error', links: 0, repos: 0, undecided: 0, generatedAt: 'now', affiliatesStatus: 'error',
+  });
+  expect(placeholder).toMatchObject({ status: 'error', affiliates: [], affiliatesStatus: 'error' });
+});

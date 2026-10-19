@@ -7,6 +7,7 @@ import {
   reReviewFailed,
   fetchRepoChecks,
   setSuggestionDecisions,
+  setAffiliateDecisions,
 } from './post-detail';
 
 vi.mock('../config/config', () => ({
@@ -189,5 +190,31 @@ describe('setSuggestionDecisions (PIPE-38)', () => {
   test('throws on a non-ok response', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 409 }));
     await expect(setSuggestionDecisions('a', {}, 'tok')).rejects.toThrow('HTTP 409');
+  });
+});
+
+describe('setAffiliateDecisions (PIPE-41)', () => {
+  test('posts the request and returns the server verdict', async () => {
+    const reply = { suggestions: { status: 'ok' }, results: { m1: { ok: true, warnings: [] } } };
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => reply });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const request = { decisions: { m1: { action: 'link' as const, url: 'https://x' } }, trackingId: 'nakomis-a-21' };
+    const result = await setAffiliateDecisions('a/b', request, 'tok');
+
+    expect(result).toEqual(reply);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.example.test/posts/a%2Fb/affiliates',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ Authorization: 'Bearer tok' }),
+        body: JSON.stringify(request),
+      }),
+    );
+  });
+
+  test('throws on a non-ok response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 409 }));
+    await expect(setAffiliateDecisions('a', { skipRemaining: true }, 'tok')).rejects.toThrow('HTTP 409');
   });
 });

@@ -24,6 +24,9 @@ jest.mock('../../../lambda/api/failed-edit', () => ({
 jest.mock('../../../lambda/api/repo-checks', () => ({
   repoChecks: jest.fn().mockResolvedValue({ statusCode: 200, body: 'repos' }),
 }));
+jest.mock('../../../lambda/api/affiliates', () => ({
+  postAffiliates: jest.fn().mockResolvedValue({ statusCode: 200, body: 'affiliates' }),
+}));
 jest.mock('../../../lambda/api/suggestions', () => ({
   postSuggestions: jest.fn().mockResolvedValue({ statusCode: 200, body: 'suggestions' }),
 }));
@@ -148,4 +151,9 @@ test('routes GET /posts/{slug}/repo-checks to repoChecks', async () => {
   await handler(event('GET', '/posts/{slug}/repo-checks'));
   expect(repoChecks).toHaveBeenCalled();
   expect(mockDetail).not.toHaveBeenCalled();
+});
+
+test('routes POST /posts/{slug}/affiliates to postAffiliates (PIPE-41)', async () => {
+  const res = await handler(event('POST', '/posts/{slug}/affiliates'));
+  expect(res.body).toBe('affiliates');
 });

@@ -13,6 +13,8 @@ human approval before publication.
 - **Re-draft model** — Claude Sonnet
 - **Link/repo suggestions (PIPE-38)** — Claude Haiku (direct Anthropic API) chooses from candidates built by code
   (embeddings from blog-app's index); accepted in the bag, applied at approval
+- **Affiliate links (PIPE-41)** — a sibling Haiku call finds product mentions; Martin pastes the
+  SiteStripe full links in the bag's Affiliate links tab; the model never writes a link or tag
 - **Loop control** — deterministic, no LLM: re-loop if the minimum publishability
   score is below threshold or any reviewer raises a blocker, capped at 4 iterations
 

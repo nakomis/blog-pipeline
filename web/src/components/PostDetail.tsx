@@ -3,6 +3,7 @@ import { useAuth } from 'react-oidc-context';
 import { Link, useParams } from 'react-router';
 import { diffLines } from 'diff';
 import Markdown from 'react-markdown';
+import type { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
   decidePost,
@@ -11,12 +12,16 @@ import {
   fetchPostDetail,
   reReviewFailed,
   saveFailedMarkdown,
+  setAffiliateDecisions,
   setSuggestionDecisions,
+  type AffiliateRequest,
+  type AffiliateResponse,
   type AnnounceMode,
   type SuggestionDecision,
   type PostDetail as PostDetailData,
 } from '../api/post-detail';
 import { displayStage, type FailureHistoryEntry, type Post } from '../api/posts';
+import { AffiliateStep } from './AffiliateStep';
 import FrontmatterPanel from './FrontmatterPanel';
 import {
   SuggestionMark,
@@ -27,7 +32,7 @@ import {
 import { SuggestionSummary } from './SuggestionSummary';
 import './PostDetail.css';
 
-type Tab = 'article' | 'diff' | 'reviews' | 'images';
+type Tab = 'article' | 'affiliate' | 'diff' | 'reviews' | 'images';
 
 /**
  * Where repo-hosted post images live. Posts that arrive with ready-made
@@ -274,6 +279,17 @@ function PostDetailInner({ idToken }: { idToken: string }) {
     ? [...suggestions.links, ...suggestions.repos].filter((s) => s.decision === 'pending').length
     : 0;
 
+  // ── Affiliate links (PIPE-41) ────────────────────────────────────────────
+  const affiliates = suggestions?.affiliatesStatus === 'ok' ? (suggestions.affiliates ?? []) : [];
+  const affiliatePending = affiliates.filter((a) => a.decision === 'pending').length;
+  const affiliateLinked = affiliates.filter((a) => a.decision === 'linked').length;
+  const frontmatterTrackingId = data?.frontmatter?.fields?.amazon_tracking_id;
+  const sourceTrackingId =
+    typeof frontmatterTrackingId === 'string' && frontmatterTrackingId.trim() !== ''
+      ? frontmatterTrackingId.trim()
+      : undefined;
+  const typedTrackingId = suggestions?.trackingId;
+
   // Choices are saved one at a time, in order, so quick clicks cannot overwrite
   // each other on the server.
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
@@ -336,6 +352,72 @@ function PostDetailInner({ idToken }: { idToken: string }) {
       }
     }
     decideSuggestions(changes);
+  };
+
+  // Affiliate choices go through the same queue as accept / reject. They are not
+  // applied optimistically: the server checks the pasted link, so its answer is
+  // what the page shows.
+  const sendAffiliates = (request: AffiliateRequest): Promise<AffiliateResponse> =>
+    new Promise((resolve, reject) => {
+      if (!slug) {
+        reject(new Error('No post'));
+        return;
+      }
+      saveQueue.current = saveQueue.current.then(async () => {
+        try {
+          const response = await setAffiliateDecisions(slug, request, idToken);
+          setData((prev) =>
+            prev?.suggestions
+              ? {
+                  ...prev,
+                  suggestions: {
+                    ...prev.suggestions,
+                    affiliates: response.suggestions.affiliates,
+                    trackingId: response.suggestions.trackingId,
+                  },
+                }
+              : prev,
+          );
+          resolve(response);
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
+
+  const showError = (err: unknown) => setError(err instanceof Error ? err.message : String(err));
+
+  const saveAffiliateLink = async (id: string, url: string) => {
+    const response = await sendAffiliates({ decisions: { [id]: { action: 'link', url } } });
+    return response.results[id] ?? { ok: false, error: 'The server did not answer for that mention.' };
+  };
+  const skipAffiliate = (id: string) =>
+    void sendAffiliates({ decisions: { [id]: { action: 'skip' } } }).catch(showError);
+  const resetAffiliate = (id: string) =>
+    void sendAffiliates({ decisions: { [id]: { action: 'reset' } } }).catch(showError);
+  const skipRemainingAffiliates = async (): Promise<boolean> => {
+    try {
+      await sendAffiliates({ skipRemaining: true });
+      return true;
+    } catch (err) {
+      showError(err);
+      return false;
+    }
+  };
+  // When nothing is left to decide, the natural next move is Approve.
+  const approveButton = useRef<HTMLButtonElement>(null);
+  const setTrackingId = async (id: string | null) => {
+    const response = await sendAffiliates({ trackingId: id });
+    return response.trackingId ?? { ok: true };
+  };
+
+  // Generated images and the like are resolved the same way in both article views.
+  const imageComponent: Components['img'] = ({ src, alt, ...props }) => {
+    const normalised = src?.replace(/^\.\//, '') ?? '';
+    const resolved =
+      imageUrlByPath.get(normalised) ??
+      (normalised.startsWith('images/') ? `${BLOG_IMAGE_BASE}${normalised}` : src);
+    return <img src={resolved} alt={alt} loading="lazy" {...props} />;
   };
 
   const save = async (reReview: boolean) => {
@@ -449,18 +531,26 @@ function PostDetailInner({ idToken }: { idToken: string }) {
       }
       const result = await decidePost(slug, decision, idToken, announceBluesky);
       const applied = result.applied;
+      const affiliatesApplied = applied?.affiliates ?? 0;
+      const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
       const appliedText =
-        decision === 'approve' && applied && (applied.links > 0 || applied.repos > 0)
-          ? ` Applied ${applied.links} link${applied.links === 1 ? '' : 's'} and ${applied.repos} repo${applied.repos === 1 ? '' : 's'}.`
+        decision === 'approve' && applied && affiliatesApplied > 0
+          ? ` Applied ${plural(applied.links, 'link')}, ${plural(applied.repos, 'repo')} and ${plural(affiliatesApplied, 'affiliate link')}.`
+          : decision === 'approve' && applied && (applied.links > 0 || applied.repos > 0)
+            ? ` Applied ${applied.links} link${applied.links === 1 ? '' : 's'} and ${applied.repos} repo${applied.repos === 1 ? '' : 's'}.`
+            : '';
+      const warningsText =
+        decision === 'approve' && result.warnings && result.warnings.length > 0
+          ? ` ${result.warnings.join(' ')}`
           : '';
       const skippedText =
         result.skipped && result.skipped.length > 0
-          ? ` ${result.skipped.length} accepted link${result.skipped.length === 1 ? ' was' : 's were'} skipped: ${result.skipped
+          ? ` ${result.skipped.length} link${result.skipped.length === 1 ? ' was' : 's were'} skipped: ${result.skipped
               .map((k) => k.reason)
               .join('; ')}.`
           : '';
       setNotice(
-        `Post ${decision === 'approve' ? 'approved' : 'rejected'}.${appliedText}${skippedText}`,
+        `Post ${decision === 'approve' ? 'approved' : 'rejected'}.${appliedText}${skippedText}${warningsText}`,
       );
       setData((prev) =>
         prev ? { ...prev, post: { ...prev.post, status: result.status as never } } : prev,
@@ -515,6 +605,7 @@ function PostDetailInner({ idToken }: { idToken: string }) {
         </div>
         <div className="detail__actions">
           <button
+            ref={approveButton}
             type="button"
             className="btn btn--primary"
             disabled={!staged || busy}
@@ -554,6 +645,18 @@ function PostDetailInner({ idToken }: { idToken: string }) {
           applied if you approve now.
         </p>
       )}
+      {staged && affiliatePending > 0 && (
+        <p className="detail__notice detail__notice--warn" role="status">
+          {affiliatePending} product mention{affiliatePending === 1 ? ' has' : 's have'} no affiliate
+          link decision and will not be linked if you approve now.
+        </p>
+      )}
+      {staged && affiliateLinked > 0 && !sourceTrackingId && !typedTrackingId && (
+        <p className="detail__notice detail__notice--warn" role="status">
+          {affiliateLinked} affiliate link{affiliateLinked === 1 ? '' : 's'} pasted, but this post has
+          no amazon_tracking_id: they will earn under nakomis-21 and cannot be attributed to the post.
+        </p>
+      )}
       {failed && <FailureReason post={data.post} />}
       {failureHistory.length > 0 && <FailureHistory entries={failureHistory} />}
       {error && (
@@ -572,7 +675,15 @@ function PostDetailInner({ idToken }: { idToken: string }) {
       />
 
       <nav className="detail__tabs" aria-label="Post views">
-        {(['article', 'diff', 'reviews', 'images'] as const).map((t) => (
+        {(
+          [
+            'article',
+            ...(affiliates.length > 0 ? (['affiliate'] as const) : []),
+            'diff',
+            'reviews',
+            'images',
+          ] as const
+        ).map((t) => (
           <button
             key={t}
             type="button"
@@ -581,11 +692,13 @@ function PostDetailInner({ idToken }: { idToken: string }) {
           >
             {t === 'article'
               ? 'Article'
-              : t === 'diff'
-                ? 'Changes'
-                : t === 'reviews'
-                  ? 'Reviews'
-                  : 'Images'}
+              : t === 'affiliate'
+                ? `Affiliate links${affiliatePending > 0 ? ` (${affiliatePending})` : ''}`
+                : t === 'diff'
+                  ? 'Changes'
+                  : t === 'reviews'
+                    ? 'Reviews'
+                    : 'Images'}
           </button>
         ))}
       </nav>
@@ -667,15 +780,7 @@ function PostDetailInner({ idToken }: { idToken: string }) {
                 remarkPlugins={remarkPlugins}
                 components={{
                   mark: (props) => <SuggestionMark {...props} />,
-                  img: ({ src, alt, ...props }) => {
-                    const normalised = src?.replace(/^\.\//, '') ?? '';
-                    const resolved =
-                      imageUrlByPath.get(normalised) ??
-                      (normalised.startsWith('images/')
-                        ? `${BLOG_IMAGE_BASE}${normalised}`
-                        : src);
-                    return <img src={resolved} alt={alt} loading="lazy" {...props} />;
-                  },
+                  img: imageComponent,
                 }}
               >
                 {articleMarkdown}
@@ -684,6 +789,30 @@ function PostDetailInner({ idToken }: { idToken: string }) {
             </SuggestionProvider>
           </div>
         ))}
+
+      {tab === 'affiliate' && affiliates.length > 0 && (
+        <AffiliateStep
+          mentions={affiliates}
+          markdown={articleMarkdown}
+          editable={staged}
+          sourceTrackingId={sourceTrackingId}
+          typedTrackingId={typedTrackingId}
+          renderArticle={(plugin, components) => (
+            <Markdown
+              remarkPlugins={[remarkGfm, plugin]}
+              components={{ ...components, img: imageComponent }}
+            >
+              {articleMarkdown}
+            </Markdown>
+          )}
+          onSave={saveAffiliateLink}
+          onSkip={skipAffiliate}
+          onReset={resetAffiliate}
+          onSkipRemaining={skipRemainingAffiliates}
+          onAllDecided={() => approveButton.current?.focus()}
+          onSetTrackingId={setTrackingId}
+        />
+      )}
 
       {tab === 'diff' && (
         <DiffView original={data.originalMarkdown} final={data.finalMarkdown} />

@@ -119,6 +119,29 @@ export interface RepoSuggestion {
   decision: SuggestionDecision;
 }
 
+/** Where an affiliate product mention stands (PIPE-41). */
+export type AffiliateDecision = 'pending' | 'linked' | 'skipped';
+
+/** A product mention that may deserve an affiliate link. The model only points at words. */
+export interface AffiliateMention {
+  id: string;
+  kind: 'affiliate';
+  /** The exact phrase that becomes the link text. */
+  anchorText: string;
+  productName: string;
+  /** The sentence the mention sits in. */
+  quote: string;
+  /** Text just around the anchor, so it can be found again. */
+  before: string;
+  after: string;
+  occurrence: { paragraph: number; offset: number };
+  reason: string;
+  decision: AffiliateDecision;
+  /** The link exactly as pasted; only when `decision` is 'linked'. */
+  url?: string;
+  warnings?: string[];
+}
+
 /** Everything the link/repo suggestion step produced for a post. */
 export interface Suggestions {
   version: 1;
@@ -131,7 +154,13 @@ export interface Suggestions {
   models: { chat: string; embed: string };
   links: LinkSuggestion[];
   repos: RepoSuggestion[];
-  dropped: { kind: 'link' | 'repo'; value: string; reason: string }[];
+  dropped: { kind: 'link' | 'repo' | 'affiliate'; value: string; reason: string }[];
+  /** Absent in files written before PIPE-41. */
+  affiliates?: AffiliateMention[];
+  affiliatesStatus?: 'ok' | 'skipped' | 'error';
+  affiliatesReason?: string;
+  /** A per-post tracking id typed in the bag when the source file has none. */
+  trackingId?: string;
 }
 
 /** The full detail bundle for one post — everything the bag renders. */
@@ -309,9 +338,11 @@ export interface DecisionResult {
   decision: 'approve' | 'reject';
   status: string;
   /** On approval: how many accepted suggestions were written (PIPE-38). */
-  applied?: { links: number; repos: number };
+  applied?: { links: number; repos: number; affiliates?: number };
   /** Accepted links that no longer fitted the text and were left out. */
   skipped?: { id: string; reason: string }[];
+  /** Things to tell the author after approval (PIPE-41); never a reason it was refused. */
+  warnings?: string[];
 }
 
 /**
@@ -336,6 +367,52 @@ export async function setSuggestionDecisions(
     throw new Error(`Failed to save suggestion choice (HTTP ${response.status})`);
   }
   return ((await response.json()) as { suggestions: Suggestions }).suggestions;
+}
+
+/** What to do with one product mention (PIPE-41). */
+export type AffiliateAction =
+  | { action: 'link'; url: string }
+  | { action: 'skip' }
+  | { action: 'reset' };
+
+export interface AffiliateRequest {
+  decisions?: Record<string, AffiliateAction>;
+  /** Skip every mention still pending. */
+  skipRemaining?: boolean;
+  /** A per-post tracking id to use when the source file has none; null clears it. */
+  trackingId?: string | null;
+}
+
+export interface AffiliateResponse {
+  suggestions: Suggestions;
+  /** Per mention: whether the choice was accepted, and why not if not. */
+  results: Record<string, { ok: boolean; error?: string; warnings?: string[] }>;
+  trackingId?: { ok: boolean; error?: string };
+}
+
+/**
+ * Records what was done with product mentions: a pasted SiteStripe link (checked
+ * by the server and stored exactly as pasted), a skip, or an undo. Nothing is
+ * written to the post until it is approved.
+ */
+export async function setAffiliateDecisions(
+  slug: string,
+  request: AffiliateRequest,
+  idToken: string,
+): Promise<AffiliateResponse> {
+  const { apiUrl } = getConfig();
+  const response = await fetch(
+    `${apiUrl}/posts/${encodeURIComponent(slug)}/affiliates`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(idToken), 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to save affiliate choice (HTTP ${response.status})`);
+  }
+  return (await response.json()) as AffiliateResponse;
 }
 
 export interface PublishNowResult {

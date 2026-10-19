@@ -19,11 +19,22 @@ export interface LinkToApply {
   id: string;
   anchorText: string;
   targetUrl: string;
+  /**
+   * For anchors that may occur more than once (affiliate mentions, PIPE-41):
+   * the text just around the anchor. The target is `before + anchor + after`,
+   * which must occur exactly once.
+   */
+  locator?: { before: string; after: string };
 }
 
 export interface ApplyResult {
   markdown: string;
   applied: string[];
+  /**
+   * Ids whose `[anchor](url)` was already in the text (a retried approval). They
+   * are also in `skipped`, but they count as applied: the link is there.
+   */
+  alreadyLinked: string[];
   skipped: { id: string; reason: string }[];
 }
 
@@ -31,12 +42,23 @@ export function applyLinkSuggestions(markdown: string, links: LinkToApply[]): Ap
   const { head, body } = splitFrontmatter(markdown);
   const protectedAt = protectedRanges(body);
   const skipped: ApplyResult['skipped'] = [];
+  const alreadyLinked: string[] = [];
   const planned: { id: string; start: number; end: number; replacement: string }[] = [];
 
   for (const link of links) {
-    const found = occurrences(body, link.anchorText);
+    let found = occurrences(body, link.anchorText);
+    let locatorFailed = false;
+    if (link.locator) {
+      const { before, after } = link.locator;
+      const context = occurrences(body, before + link.anchorText + after);
+      found = context.length === 1 ? [context[0] + before.length] : [];
+      locatorFailed = context.length !== 1;
+    }
     if (body.includes(`[${link.anchorText}](${link.targetUrl})`)) {
       skipped.push({ id: link.id, reason: 'already linked' });
+      alreadyLinked.push(link.id);
+    } else if (locatorFailed) {
+      skipped.push({ id: link.id, reason: 'the text around the anchor has changed' });
     } else if (found.length !== 1) {
       skipped.push({
         id: link.id,
@@ -84,7 +106,7 @@ export function applyLinkSuggestions(markdown: string, links: LinkToApply[]): Ap
   for (const item of [...kept].reverse()) {
     out = out.slice(0, item.start) + item.replacement + out.slice(item.end);
   }
-  return { markdown: head + out, applied: kept.map((k) => k.id), skipped };
+  return { markdown: head + out, applied: kept.map((k) => k.id), alreadyLinked, skipped };
 }
 
 /** Carry decisions over from a previous file for suggestions with the same id. */
@@ -101,11 +123,33 @@ export function mergeDecisions(
       decided.set(s.id, s.decision);
     }
   }
+  const earlier = new Map((previous.affiliates ?? []).map((a) => [a.id, a]));
   return {
     ...next,
     links: next.links.map((l) => ({ ...l, decision: decided.get(l.id) ?? l.decision })),
     repos: next.repos.map((r) => ({ ...r, decision: decided.get(r.id) ?? r.decision })),
+    ...(next.affiliates
+      ? {
+          affiliates: next.affiliates.map((a) => {
+            const was = earlier.get(a.id);
+            return was && was.decision !== 'pending'
+              ? {
+                  ...a,
+                  decision: was.decision,
+                  ...(was.url ? { url: was.url } : {}),
+                  ...(was.warnings ? { warnings: was.warnings } : {}),
+                }
+              : a;
+          }),
+        }
+      : {}),
+    ...(previous.trackingId && !next.trackingId ? { trackingId: previous.trackingId } : {}),
   };
+}
+
+/** Product mentions still awaiting a decision (PIPE-41). */
+export function undecidedAffiliates(s: Pick<Suggestions, 'affiliates'>): number {
+  return (s.affiliates ?? []).filter((a) => a.decision === 'pending').length;
 }
 
 /** Count of suggestions still awaiting a decision. */

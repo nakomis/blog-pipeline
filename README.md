@@ -21,6 +21,7 @@ If you find this useful, please consider buying me a coffee:
 - [Project status](#project-status)
 - [Review loop](#review-loop)
   * [Link and repo suggestions (PIPE-38)](#link-and-repo-suggestions-pipe-38)
+  * [Affiliate link step (PIPE-41)](#affiliate-link-step-pipe-41)
   * [Manual prerequisites](#manual-prerequisites)
   * [Image generation (PIPE-6)](#image-generation-pipe-6)
   * [fal.ai credit warning (PIPE-34)](#falai-credit-warning-pipe-34)
@@ -223,6 +224,51 @@ AWS_PROFILE=nakom.is-admin npm run eval-links-prod -- \
 ```
 
 It exits 2 if the Alexa announce post is offered a link to the Cabal post.
+
+### Affiliate link step (PIPE-41)
+
+A separate, manual step in the bag for Amazon Associates links. The model never
+writes or edits a link or a tag; it only points at words.
+
+- **Detection.** The suggest-links Lambda makes a second, sibling Haiku call
+  (same model and key) that returns product mentions: specific physical
+  products Martin bought or used, each with the exact sentence it sits in.
+  Code keeps a mention only if that sentence occurs exactly once in the post,
+  the anchor is inside it, and the anchor is not in a heading, code, link,
+  image or `{{...}}`. It runs even when the link half is skipped (no embeddings
+  index) or fails. Results go in the same `suggestions.json` under
+  `affiliates` (`affiliatesStatus`, `affiliatesReason`, `trackingId`).
+- **The bag.** An "Affiliate links" tab after Article: the post with each
+  mention highlighted and a row per mention. Paste the full amazon.co.uk
+  SiteStripe link and press Enter (saves, moves to the next); Shift+Enter
+  skips; Esc clears; "Skip all remaining" skips the rest. If the source file
+  has no `amazon_tracking_id`, a per-post ID (`nakomis-<name>-21`) can be typed
+  there; it is never invented.
+- **Validation** (`lambda/suggest/affiliate.ts`, server side, no network): https,
+  host `amazon.co.uk` or `www.amazon.co.uk`, exactly one `tag` that is
+  `nakomis-21` or `nakomis-...-21`. Short links (`amzn.to`, `link.amazon`,
+  `amzn.eu`, `a.co`) are rejected with "use SiteStripe's Full link", because the
+  tag is hidden and the blog build refuses them. A tag that differs from the
+  post's tracking ID, a missing tracking ID, a non-product page and a repeated
+  product are warnings. The pasted text itself must also match a plain ASCII form
+  (`AFFILIATE.rawPattern`: lower case, no port or sign-in details, no backslashes,
+  quotes, brackets or whitespace), so URL tidying cannot let through a link that promotion would
+  read differently. At approval the same product pasted twice is linked once (the
+  first). The link is stored and later written exactly as pasted.
+- **Route.** `POST /posts/{slug}/affiliates`
+  (`{decisions: {id: {action: 'link', url} | {action: 'skip'} | {action: 'reset'}}, skipRemaining?, trackingId?}`),
+  staged posts only.
+- **On approval** the pasted links go into the final draft in the same `If-Match`
+  write as accepted PIPE-38 links. Undecided mentions and a missing tracking ID
+  produce warnings, never a refusal. The row gets `approvedAffiliateUrls` and,
+  when the source has no tracking ID, `approvedTrackingId`.
+- **Prerequisite (blog-content).** `promote-approved.py` must allow the links
+  approved in the bag and add a typed tracking ID
+  (`scripts/frontmatter_amazon.py`). Without that change promotion rejects a post
+  whose approved body contains an Amazon link the author did not write (BAPP-16).
+  It must be live before the first approval that contains an affiliate link.
+- `npm run eval-links-prod -- <post.md> --products-only` runs just the product
+  pass, read-only.
 
 ### Manual prerequisites
 

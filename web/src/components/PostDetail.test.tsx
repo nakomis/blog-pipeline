@@ -11,6 +11,8 @@ import {
   saveFailedMarkdown,
   reReviewFailed,
   setSuggestionDecisions,
+  setAffiliateDecisions,
+  type AffiliateMention,
   type PostDetail as PostDetailData,
 } from '../api/post-detail';
 
@@ -25,6 +27,7 @@ const mockedFetchFailed = vi.mocked(fetchFailedMarkdown);
 const mockedSaveFailed = vi.mocked(saveFailedMarkdown);
 const mockedReReview = vi.mocked(reReviewFailed);
 const mockedSetDecisions = vi.mocked(setSuggestionDecisions);
+const mockedSetAffiliates = vi.mocked(setAffiliateDecisions);
 
 function authState(overrides: Partial<AuthContextProps>): AuthContextProps {
   return {
@@ -672,7 +675,7 @@ describe('PostDetail — link and repo suggestions (PIPE-38)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
 
     expect(
-      await screen.findByText(/Applied 1 link and 1 repo\. 1 accepted link was skipped: the anchor text is no longer/),
+      await screen.findByText(/Applied 1 link and 1 repo\. 1 link was skipped: the anchor text is no longer/),
     ).toBeInTheDocument();
   });
 
@@ -780,5 +783,250 @@ describe('PostDetail — link and repo suggestions (PIPE-38)', () => {
     mockedDecide.mockResolvedValue({ slug: 'my-post', decision: 'approve', status: 'approved' });
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
     await waitFor(() => expect(mockedDecide).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe('PostDetail — affiliate links (PIPE-41)', () => {
+  const AMZ = 'https://www.amazon.co.uk/dp/B0F4D8ZY6L?tag=nakomis-bconn66-21';
+  const ARTICLE = 'I printed on the Mars 5 Ultra today.\n\nThen I fitted a magnetic flex plate to it.';
+  const m1: AffiliateMention = {
+    id: 'a1', kind: 'affiliate', anchorText: 'Mars 5 Ultra', productName: 'Elegoo Mars 5 Ultra',
+    quote: 'I printed on the Mars 5 Ultra today.', before: 'on the ', after: ' today.',
+    occurrence: { paragraph: 0, offset: 0 }, reason: 'He printed on it.', decision: 'pending',
+  };
+  const m2: AffiliateMention = {
+    id: 'a2', kind: 'affiliate', anchorText: 'magnetic flex plate', productName: 'Flex plate',
+    quote: 'Then I fitted a magnetic flex plate to it.', before: 'fitted a ', after: ' to it.',
+    occurrence: { paragraph: 1, offset: 0 }, reason: 'He fitted it.', decision: 'pending',
+  };
+  const detail = (affiliates = [m1, m2], extra: Partial<NonNullable<PostDetailData['suggestions']>> = {}, fm = true): PostDetailData => ({
+    ...sampleDetail,
+    finalMarkdown: ARTICLE,
+    ...(fm
+      ? {
+          frontmatter: {
+            present: true, raw: '', filenameKnown: true, warnings: [],
+            fields: { amazon_tracking_id: 'nakomis-bconn66-21' },
+          },
+        }
+      : {}),
+    suggestions: {
+      version: 1, slug: 'my-post', iteration: 2, generatedAt: 'x', status: 'skipped',
+      skippedReason: 'no-embeddings-index', models: { chat: 'c', embed: 'e' },
+      links: [], repos: [], dropped: [], affiliates, affiliatesStatus: 'ok', ...extra,
+    },
+  });
+  const open = async () => {
+    mockedUseAuth.mockReturnValue(signedIn());
+    renderDetail();
+    await screen.findByText('My Post');
+  };
+  const tab = () => screen.getByRole('button', { name: /Affiliate links/ });
+
+  test('the tab shows how many mentions still need a decision', async () => {
+    mockedFetch.mockResolvedValue(detail());
+    await open();
+    expect(tab()).toHaveTextContent('Affiliate links (2)');
+  });
+
+  test('there is no tab when no step ran or nothing was found', async () => {
+    mockedFetch.mockResolvedValue(detail([]));
+    await open();
+    expect(screen.queryByRole('button', { name: /Affiliate links/ })).not.toBeInTheDocument();
+  });
+
+  test('there is no tab for posts without suggestions', async () => {
+    mockedFetch.mockResolvedValue(sampleDetail);
+    await open();
+    expect(screen.queryByRole('button', { name: /Affiliate links/ })).not.toBeInTheDocument();
+  });
+
+  test('opening it highlights the mentions and lists a row for each', async () => {
+    mockedFetch.mockResolvedValue(detail());
+    await open();
+    fireEvent.click(tab());
+    expect(document.querySelectorAll('mark[data-affiliate-id]')).toHaveLength(2);
+    expect(screen.getAllByLabelText(/SiteStripe link for/)).toHaveLength(2);
+    expect(screen.getAllByText('Affiliate link needed')).toHaveLength(2);
+    expect(screen.getByText(/\(from the source file\)/)).toBeInTheDocument();
+  });
+
+  test('pasting a link and pressing Enter saves it and shows it as linked', async () => {
+    mockedFetch.mockResolvedValue(detail());
+    mockedSetAffiliates.mockResolvedValue({
+      suggestions: detail([{ ...m1, decision: 'linked', url: AMZ, warnings: [] }, m2]).suggestions!,
+      results: { a1: { ok: true, warnings: [] } },
+    });
+    await open();
+    fireEvent.click(tab());
+    const [first] = screen.getAllByLabelText(/SiteStripe link for/);
+    fireEvent.change(first, { target: { value: AMZ } });
+    fireEvent.keyDown(first, { key: 'Enter' });
+
+    await waitFor(() =>
+      expect(mockedSetAffiliates).toHaveBeenCalledWith(
+        'my-post',
+        { decisions: { a1: { action: 'link', url: AMZ } } },
+        'tok',
+      ),
+    );
+    expect(await screen.findByText('Linked')).toBeInTheDocument();
+    expect(tab()).toHaveTextContent('Affiliate links (1)');
+  });
+
+  test('a link the server refuses stays in the box with the reason', async () => {
+    mockedFetch.mockResolvedValue(detail());
+    mockedSetAffiliates.mockResolvedValue({
+      suggestions: detail().suggestions!,
+      results: { a1: { ok: false, error: "That is a short link. Use SiteStripe's Full link." } },
+    });
+    await open();
+    fireEvent.click(tab());
+    const [first] = screen.getAllByLabelText(/SiteStripe link for/);
+    fireEvent.change(first, { target: { value: 'https://amzn.to/x' } });
+    fireEvent.keyDown(first, { key: 'Enter' });
+    expect(await screen.findByText(/Use SiteStripe's Full link/)).toBeInTheDocument();
+    expect(first).toHaveValue('https://amzn.to/x');
+  });
+
+  test('Skip sends a skip, and Undo resets', async () => {
+    mockedFetch.mockResolvedValue(detail());
+    mockedSetAffiliates.mockResolvedValue({
+      suggestions: detail([{ ...m1, decision: 'skipped' }, m2]).suggestions!,
+      results: { a1: { ok: true, warnings: [] } },
+    });
+    await open();
+    fireEvent.click(tab());
+    fireEvent.click(screen.getAllByRole('button', { name: 'Skip' })[0]);
+    await waitFor(() =>
+      expect(mockedSetAffiliates).toHaveBeenCalledWith('my-post', { decisions: { a1: { action: 'skip' } } }, 'tok'),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo' }));
+    await waitFor(() =>
+      expect(mockedSetAffiliates).toHaveBeenLastCalledWith('my-post', { decisions: { a1: { action: 'reset' } } }, 'tok'),
+    );
+  });
+
+  test('Skip all remaining sends one request', async () => {
+    mockedFetch.mockResolvedValue(detail());
+    mockedSetAffiliates.mockResolvedValue({
+      suggestions: detail([{ ...m1, decision: 'skipped' }, { ...m2, decision: 'skipped' }]).suggestions!,
+      results: {},
+    });
+    await open();
+    fireEvent.click(tab());
+    fireEvent.click(screen.getByRole('button', { name: /Skip all remaining \(2\)/ }));
+    await waitFor(() =>
+      expect(mockedSetAffiliates).toHaveBeenCalledWith('my-post', { skipRemaining: true }, 'tok'),
+    );
+    expect(await screen.findAllByText('Skipped')).toHaveLength(2);
+    expect(screen.queryByText(/mentions? (had|have) no affiliate link decision/)).not.toBeInTheDocument();
+  });
+
+  test('once every mention is decided, focus moves to Approve', async () => {
+    mockedFetch.mockResolvedValue(detail([m1]));
+    mockedSetAffiliates.mockResolvedValue({
+      suggestions: detail([{ ...m1, decision: 'linked', url: AMZ, warnings: [] }]).suggestions!,
+      results: { a1: { ok: true, warnings: [] } },
+    });
+    await open();
+    fireEvent.click(tab());
+    const [first] = screen.getAllByLabelText(/SiteStripe link for/);
+    fireEvent.change(first, { target: { value: AMZ } });
+    fireEvent.keyDown(first, { key: 'Enter' });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Approve' })).toHaveFocus());
+  });
+
+  test('Skip all remaining also ends on Approve, but not if the request fails', async () => {
+    mockedFetch.mockResolvedValue(detail());
+    mockedSetAffiliates.mockRejectedValueOnce(new Error('Failed to save affiliate choice (HTTP 500)'));
+    await open();
+    fireEvent.click(tab());
+    fireEvent.click(screen.getByRole('button', { name: /Skip all remaining/ }));
+    await screen.findByText(/HTTP 500/);
+    expect(screen.getByRole('button', { name: 'Approve' })).not.toHaveFocus();
+    mockedSetAffiliates.mockResolvedValue({
+      suggestions: detail([{ ...m1, decision: 'skipped' }, { ...m2, decision: 'skipped' }]).suggestions!,
+      results: {},
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Skip all remaining/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Approve' })).toHaveFocus());
+  });
+
+  test('a failed request is shown on the row and does not break the page', async () => {
+    mockedFetch.mockResolvedValue(detail());
+    mockedSetAffiliates.mockRejectedValue(new Error('Failed to save affiliate choice (HTTP 500)'));
+    await open();
+    fireEvent.click(tab());
+    const [first] = screen.getAllByLabelText(/SiteStripe link for/);
+    fireEvent.change(first, { target: { value: AMZ } });
+    fireEvent.keyDown(first, { key: 'Enter' });
+    expect(await screen.findByText(/HTTP 500/)).toBeInTheDocument();
+  });
+
+  test('with no tracking id in the source, one can be typed', async () => {
+    mockedFetch.mockResolvedValue(detail([m1, m2], {}, false));
+    mockedSetAffiliates.mockResolvedValue({
+      suggestions: detail([m1, m2], { trackingId: 'nakomis-bconn66-21' }, false).suggestions!,
+      results: {},
+      trackingId: { ok: true },
+    });
+    await open();
+    fireEvent.click(tab());
+    fireEvent.change(screen.getByLabelText('Per-post tracking ID'), { target: { value: 'nakomis-bconn66-21' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Use this ID' }));
+    await waitFor(() =>
+      expect(mockedSetAffiliates).toHaveBeenCalledWith('my-post', { trackingId: 'nakomis-bconn66-21' }, 'tok'),
+    );
+    expect(await screen.findByText(/entered here/)).toBeInTheDocument();
+  });
+
+  test('undecided mentions are warned about, and never block approval', async () => {
+    mockedFetch.mockResolvedValue(detail());
+    mockedDecide.mockResolvedValue({ slug: 'my-post', decision: 'approve', status: 'approved' });
+    await open();
+    expect(screen.getByText(/2 product mentions have no affiliate link decision/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(mockedDecide).toHaveBeenCalled());
+  });
+
+  test('no warning once every mention is decided', async () => {
+    mockedFetch.mockResolvedValue(detail([{ ...m1, decision: 'linked', url: AMZ }, { ...m2, decision: 'skipped' }]));
+    await open();
+    expect(screen.queryByText(/no affiliate link decision/)).not.toBeInTheDocument();
+  });
+
+  test('warns when links are pasted but the post has no tracking id', async () => {
+    mockedFetch.mockResolvedValue(detail([{ ...m1, decision: 'linked', url: AMZ }, m2], {}, false));
+    await open();
+    expect(screen.getByText(/no amazon_tracking_id/i)).toBeInTheDocument();
+  });
+
+  test('approval reports affiliate links written and the server warnings', async () => {
+    mockedFetch.mockResolvedValue(detail([{ ...m1, decision: 'linked', url: AMZ }, { ...m2, decision: 'skipped' }]));
+    mockedDecide.mockResolvedValue({
+      slug: 'my-post', decision: 'approve', status: 'approved',
+      applied: { links: 0, repos: 0, affiliates: 1 }, skipped: [],
+      warnings: ['This post has no amazon_tracking_id, so its links earn under nakomis-21.'],
+    });
+    await open();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    expect(await screen.findByText(/Applied 0 links, 0 repos and 1 affiliate link\./)).toBeInTheDocument();
+    expect(screen.getByText(/earn under nakomis-21/)).toBeInTheDocument();
+  });
+
+  test('a failed affiliate step is explained', async () => {
+    mockedFetch.mockResolvedValue(detail([], { affiliatesStatus: 'error', affiliatesReason: 'error: overloaded' }));
+    await open();
+    expect(screen.getByText(/affiliate step failed \(error: overloaded\)/i)).toBeInTheDocument();
+  });
+
+  test('the tab is read-only once the post is no longer staged', async () => {
+    mockedFetch.mockResolvedValue({ ...detail(), post: { ...sampleDetail.post, status: 'approved' } });
+    await open();
+    fireEvent.click(tab());
+    expect(screen.queryByLabelText(/SiteStripe link for/)).not.toBeInTheDocument();
+    expect(screen.getAllByText('Affiliate link needed')).toHaveLength(2);
   });
 });

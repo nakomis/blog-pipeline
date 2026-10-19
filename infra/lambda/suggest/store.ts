@@ -3,7 +3,7 @@ import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from '@aws-sdk/lib-
 import { LINKS } from '../../lib/config';
 import { draftExists, getDraft, putReviews } from '../review/drafts';
 import { requireEnv } from '../review/runtime';
-import { undecidedCount } from './apply';
+import { undecidedAffiliates, undecidedCount } from './apply';
 import type { Suggestions, SuggestionsSummary } from './schema';
 
 /**
@@ -41,6 +41,13 @@ export function summaryOf(s: Suggestions): SuggestionsSummary {
     repos: s.repos.length,
     undecided: undecidedCount(s),
     generatedAt: s.generatedAt,
+    ...(s.affiliatesStatus
+      ? {
+          affiliates: (s.affiliates ?? []).length,
+          affiliatesUndecided: undecidedAffiliates(s),
+          affiliatesStatus: s.affiliatesStatus,
+        }
+      : {}),
   };
 }
 
@@ -97,5 +104,7 @@ export async function getCurrentSuggestions(
     links: [],
     repos: [],
     dropped: [],
+    affiliates: [],
+    ...(summary.affiliatesStatus ? { affiliatesStatus: summary.affiliatesStatus } : {}),
   };
 }

@@ -1,8 +1,9 @@
 import { generateObject } from 'ai';
-import { LINKS, githubOwners } from '../../lib/config';
+import { AFFILIATE, LINKS, githubOwners } from '../../lib/config';
 import { getDraft } from '../review/drafts';
 import { suggestModel } from '../review/providers';
 import { mergeDecisions } from './apply';
+import { amazonLinkTexts, validateProducts } from './affiliate';
 import { embedTexts, IndexIncompatibleError, loadIndex } from './embeddings';
 import type { IndexRecord } from './embeddings';
 import { extractRepoUrls, listPublicRepos, mentionsRepo } from './github';
@@ -12,9 +13,14 @@ import {
   windowsOf,
   wordCount,
 } from './markdown';
-import { SUGGEST_SYSTEM_PROMPT, buildSuggestPrompt } from './prompt';
+import {
+  AFFILIATE_SYSTEM_PROMPT,
+  SUGGEST_SYSTEM_PROMPT,
+  buildAffiliatePrompt,
+  buildSuggestPrompt,
+} from './prompt';
 import { chooseCandidates, eligibleRecords, retrievalDefaults, scorePosts } from './retrieve';
-import { Picks } from './schema';
+import { Picks, ProductPicks } from './schema';
 import type { Candidate, RepoInfo, Suggestions, SuggestionsSummary } from './schema';
 import {
   getSummary,
@@ -51,6 +57,8 @@ export interface Deps {
   embedTexts(texts: string[]): Promise<Float32Array[]>;
   listRepos(): Promise<RepoInfo[]>;
   pick(system: string, prompt: string): Promise<Picks>;
+  /** Product mentions for the affiliate step (PIPE-41); a sibling call to `pick`. */
+  pickProducts(system: string, prompt: string): Promise<ProductPicks>;
   getPrevious(slug: string): Promise<Suggestions | null>;
   put(suggestions: Suggestions): Promise<void>;
   putSummary(slug: string, summary: SuggestionsSummary): Promise<void>;
@@ -68,6 +76,15 @@ export function defaultDeps(): Deps {
       const { object } = await generateObject({
         model: await suggestModel(),
         schema: Picks,
+        system,
+        prompt,
+      });
+      return object;
+    },
+    async pickProducts(system, prompt) {
+      const { object } = await generateObject({
+        model: await suggestModel(),
+        schema: ProductPicks,
         system,
         prompt,
       });
@@ -111,13 +128,13 @@ function blank(
 }
 
 /**
- * Produce suggestions for a draft. Throws on infrastructure failure; `run`
- * turns that into a recorded `error`. Does not write anything itself.
+ * The link and repo half. Throws on infrastructure failure; the caller turns
+ * that into a recorded `error` for this half only.
  */
-export async function generateSuggestions(
+async function linkFlow(
   input: SuggestLinksInput & { markdown: string },
   deps: Deps,
-  options: GenerateOptions = {},
+  options: GenerateOptions,
 ): Promise<Suggestions> {
   const now = deps.now();
   const { frontmatter, body } = splitFrontmatter(input.markdown);
@@ -216,6 +233,85 @@ export async function generateSuggestions(
   return result;
 }
 
+/**
+ * The affiliate half (PIPE-41): ask Haiku for product mentions. Independent of
+ * the embeddings index, candidates and repos, so it runs when the link half is
+ * skipped or fails. Throws on failure; validation happens once the link half
+ * has settled (a product may not overlap a suggested link).
+ */
+async function askForProducts(markdown: string, deps: Deps): Promise<ProductPicks | null> {
+  const { body } = splitFrontmatter(markdown);
+  if (body.trim() === '') {
+    return null;
+  }
+  return deps.pickProducts(
+    AFFILIATE_SYSTEM_PROMPT,
+    buildAffiliatePrompt({
+      body,
+      existingAmazonTexts: amazonLinkTexts(body),
+      max: AFFILIATE.maxMentions,
+    }),
+  );
+}
+
+function reasonOf(err: unknown): string {
+  return `error: ${err instanceof Error ? err.message : String(err)}`.slice(0, 500);
+}
+
+/**
+ * Produce suggestions for a draft: the link and repo half and the affiliate
+ * half run side by side, and a failure in one never loses the other. Does not
+ * write anything itself.
+ */
+export async function generateSuggestions(
+  input: SuggestLinksInput & { markdown: string },
+  deps: Deps,
+  options: GenerateOptions = {},
+): Promise<Suggestions> {
+  const [linkOutcome, productOutcome] = await Promise.allSettled([
+    linkFlow(input, deps, options),
+    askForProducts(input.markdown, deps),
+  ]);
+
+  let result: Suggestions;
+  if (linkOutcome.status === 'fulfilled') {
+    result = linkOutcome.value;
+  } else {
+    const err = linkOutcome.reason;
+    console.error(`suggest-links: link half failed for '${input.slug}'`, err);
+    result =
+      err instanceof IndexIncompatibleError
+        ? blank(input, deps.now(), 'skipped', 'index-incompatible')
+        : blank(input, deps.now(), 'error', reasonOf(err));
+  }
+
+  result.affiliates = [];
+  const { body } = splitFrontmatter(input.markdown);
+  if (productOutcome.status === 'rejected') {
+    console.error(`suggest-links: affiliate half failed for '${input.slug}'`, productOutcome.reason);
+    result.affiliatesStatus = 'error';
+    result.affiliatesReason = reasonOf(productOutcome.reason);
+  } else if (productOutcome.value === null) {
+    result.affiliatesStatus = 'skipped';
+    result.affiliatesReason = 'empty-post';
+  } else {
+    const validated = validateProducts({
+      picks: productOutcome.value.products,
+      body,
+      linkRanges: result.links.map((l): [number, number] => [
+        l.occurrence.offset,
+        l.occurrence.offset + l.anchorText.length,
+      ]),
+      existingAmazonTexts: amazonLinkTexts(body),
+      maxMentions: AFFILIATE.maxMentions,
+    });
+    result.affiliates = validated.accepted;
+    result.dropped.push(...validated.dropped);
+    result.affiliatesStatus = 'ok';
+  }
+  return result;
+}
+
 export interface SuggestLinksOutput {
   slug: string;
   suggestions: SuggestionsSummary;
@@ -243,6 +339,9 @@ export async function run(
       err instanceof IndexIncompatibleError ? 'skipped' : 'error',
       reason.slice(0, 500),
     );
+    suggestions.affiliates = [];
+    suggestions.affiliatesStatus = 'error';
+    suggestions.affiliatesReason = reason.slice(0, 500);
   }
 
   const summary = summaryOf(suggestions);

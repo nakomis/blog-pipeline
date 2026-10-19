@@ -259,4 +259,73 @@ describe('postDecision', () => {
       expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(0);
     });
   });
+
+  describe('affiliate links (PIPE-41)', () => {
+    const AMZ = 'https://www.amazon.co.uk/dp/B0F4D8ZY6L?tag=nakomis-bconn66-21';
+    const summary = { iteration: 2, status: 'ok', links: 0, repos: 0, undecided: 0, generatedAt: 'x', affiliatesStatus: 'ok' };
+    const file = (decision: string, trackingId?: string) =>
+      JSON.stringify({
+        version: 1, slug: 'p', iteration: 2, generatedAt: 'x', status: 'ok',
+        models: { chat: 'c', embed: 'e' }, dropped: [], links: [], repos: [],
+        affiliatesStatus: 'ok',
+        ...(trackingId ? { trackingId } : {}),
+        affiliates: [{
+          id: 'a1', kind: 'affiliate', anchorText: 'Mars 5 Ultra', productName: 'Mars', quote: 'q',
+          before: 'on the ', after: ' today.', occurrence: { paragraph: 0, offset: 0 }, reason: 'r',
+          decision, ...(decision === 'linked' ? { url: AMZ } : {}),
+        }],
+      });
+    function serve(decision: string, source = 'title: x', trackingId?: string): void {
+      s3Mock.on(HeadObjectCommand).resolves({});
+      s3Mock.on(GetObjectCommand, { Key: 'p/iteration-2/suggestions.json' }).resolves({
+        Body: { transformToString: async () => file(decision, trackingId) } as never,
+      });
+      s3Mock.on(GetObjectCommand, { Key: 'p/iteration-2/draft.md' }).resolves({
+        Body: { transformToString: async () => 'I printed on the Mars 5 Ultra today.' } as never,
+        ETag: '"e"',
+      });
+      s3Mock.on(GetObjectCommand, { Key: 'p/iteration-1/draft.md' }).resolves({
+        Body: { transformToString: async () => `---\n${source}\n---\n\nx` } as never,
+      });
+      ddbMock.on(GetCommand).resolves({
+        Item: { slug: 'p', status: 'staged', reviewIteration: 2, suggestionsSummary: summary },
+      });
+      ddbMock.on(UpdateCommand).resolves({});
+    }
+
+    test('approve writes the pasted link and records it on the row for promotion', async () => {
+      serve('linked', 'amazon_tracking_id: "nakomis-bconn66-21"');
+      const res = await postDecision(event('p', { decision: 'approve' }));
+      const body = JSON.parse(res.body);
+      expect(body).toMatchObject({ status: 'approved', applied: { affiliates: 1 } });
+      expect(body.warnings).toBeUndefined();
+      expect(s3Mock.commandCalls(PutObjectCommand)[0].args[0].input.Body).toBe(
+        `I printed on the [Mars 5 Ultra](${AMZ}) today.`,
+      );
+      const upd = ddbMock.commandCalls(UpdateCommand)[0].args[0].input;
+      expect(upd.UpdateExpression).toContain('approvedAffiliateUrls = :aff');
+      expect(upd.UpdateExpression).not.toContain('approvedTrackingId');
+      expect(upd.ExpressionAttributeValues).toMatchObject({ ':aff': [AMZ] });
+    });
+
+    test('a typed tracking id goes on the row only when the source has none', async () => {
+      serve('linked', 'title: x', 'nakomis-bconn66-21');
+      await postDecision(event('p', { decision: 'approve' }));
+      const upd = ddbMock.commandCalls(UpdateCommand)[0].args[0].input;
+      expect(upd.UpdateExpression).toContain('approvedTrackingId = :tid');
+      expect(upd.ExpressionAttributeValues).toMatchObject({ ':tid': 'nakomis-bconn66-21' });
+    });
+
+    test('undecided mentions and a missing tracking id are warnings, never a block', async () => {
+      serve('pending');
+      const res = await postDecision(event('p', { decision: 'approve' }));
+      expect(res.statusCode).toBe(200);
+      expect(JSON.parse(res.body).warnings.join(' ')).toMatch(/no affiliate link decision/);
+      const upd = ddbMock.commandCalls(UpdateCommand)[0].args[0].input;
+      expect(upd.UpdateExpression).not.toContain('approvedAffiliateUrls');
+      serve('linked');
+      const res2 = await postDecision(event('p', { decision: 'approve' }));
+      expect(JSON.parse(res2.body).warnings.join(' ')).toMatch(/no amazon_tracking_id/);
+    });
+  });
 });

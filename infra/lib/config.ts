@@ -234,6 +234,30 @@ export const LINKS = {
   taskTimeoutSeconds: 150,
 } as const;
 
+/** Affiliate product mentions (PIPE-41). */
+export const AFFILIATE = {
+  /** Upper bound on product mentions offered per post. */
+  maxMentions: 8,
+  /** Context kept either side of an anchor so it can be found again at approval. */
+  locatorChars: 40,
+  /** Hosts a pasted link may have: the UK marketplace only. */
+  hosts: ['amazon.co.uk', 'www.amazon.co.uk'],
+  /** Short-link hosts, rejected with an explanation (the blog build refuses them). */
+  shortHosts: ['amzn.to', 'link.amazon', 'amzn.eu', 'a.co'],
+  /** Martin's Associates tag: the store id, or a per-post id. */
+  tagPattern: '^nakomis(-[a-z0-9]+)*-21$',
+  /**
+   * The raw pasted text must match this ASCII-only form exactly (lower-case, no
+   * port, no sign-in details, none of `\ ' [ ] ( ) < > " ` or whitespace), so that
+   * `new URL()` normalisation cannot let through a link the promotion check reads
+   * differently.
+   */
+  rawPattern: "^https://(www\\.)?amazon\\.co\\.uk/[!#-&*-;=?-Z^_a-~]*$",
+  /** A per-post tracking id that may be entered in the bag (not the bare store id). */
+  trackingIdPattern: '^nakomis(-[a-z0-9]+)+-21$',
+  maxUrlChars: 2000,
+} as const;
+
 /**
  * Name of the nakom.is private bucket that holds `blog-embeddings.json`.
  * Derived exactly as `nakom.is/lib/deploy-env.ts` does (`envSuffix`).

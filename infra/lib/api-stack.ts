@@ -340,6 +340,10 @@ export class ApiStack extends cdk.Stack {
     post
       .addResource('suggestions')
       .addMethod('POST', apiIntegration, securedMethod);
+    // PIPE-41: paste or skip affiliate links for product mentions.
+    post
+      .addResource('affiliates')
+      .addMethod('POST', apiIntegration, securedMethod);
     post
       .addResource('decision')
       .addMethod('POST', apiIntegration, securedMethod);
